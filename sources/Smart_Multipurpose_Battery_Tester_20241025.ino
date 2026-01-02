@@ -82,7 +82,7 @@ float cutoffVoltage = 3.0;        // Default cutoff voltage, to be selected by u
 const float Min_BAT_level = 2.8;  // Minimum threshold voltage for discharge
 const float Max_BAT_level = 3.2;  // Maximum threshold voltage for discharge
 const float FULL_BAT_level = 4.18;  // Threshold voltage for stopping charge ( Typical Value is 4.2V )
-const float DAMAGE_BAT_level = 1.0;  // Define voltage for damged battery
+const float DAMAGE_BAT_level = 2.5;  // Define voltage for damged battery
 const float NO_BAT_level = 0.3;  // Define voltage for empty slot 
 
 int Current[] = {0, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000};
@@ -206,13 +206,6 @@ void selectMode() {
         Mode_Button.read();
         UP_Button.read();
         Down_Button.read();
-
-        //if ( UP_Button.isPressed() && UP_Button.lastChange() != upLastChange )
-        //{
-        //    Serial.print("UP is pressed ");
-        //    Serial.println(upLastChange, DEC);            
-        //}   
-
 
         // Handle UP button press (move up in the menu)
         if (UP_Button.isPressed() && UP_Button.lastChange() != upLastChange) {
