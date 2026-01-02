@@ -1,7 +1,7 @@
 # esp32_smart_battery_analyzer
 Bluetooth Fleet of SmartCharger and Battery Profile Analyzer 
 
-Reference: 
+References: 
 - [Instructables](https://www.instructables.com/DIY-Smart-Multipurpose-Battery-Tester/) - detailed instructions and schematics
 - [PCBWay](https://www.pcbway.com/project/shareproject/DIY_Smart_Multipurpose_Battery_Tester_aaf0922e.html) - PCB production
 
