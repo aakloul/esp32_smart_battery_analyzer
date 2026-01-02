@@ -10,6 +10,48 @@
 #include <Adafruit_SSD1306.h>
 #include <JC_Button.h>
 
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+// Bluetooth support
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#include <Arduino.h>
+#include <NimBLEDevice.h>
+#include <NimBLEEddystoneTLM.h>
+#include <sys/time.h>
+#include <esp_sleep.h>
+#include <mbedtls/md.h>          // mbedTLS is bundled with the ESP32 Arduino core
+
+
+#define GPIO_DEEP_SLEEP_DURATION 10 // sleep x seconds and then wake up
+#define BEACON_POWER             3  // 3dbm
+
+# define ENDIAN_CHANGE_U16(x) ((((x) & 0xFF00) >> 8) + (((x) & 0xFF) << 8))
+# define ENDIAN_CHANGE_U32(x) \
+     ((((x) & 0xFF000000) >> 24) + (((x) & 0x00FF0000) >> 8)) + ((((x) & 0xFF00) << 8) + (((x) & 0xFF) << 24))
+
+RTC_DATA_ATTR static time_t   last;      // remember last boot in RTC Memory
+RTC_DATA_ATTR static uint32_t bootcount; // remember number of boots in RTC Memory
+NimBLEAdvertising*            pAdvertising;
+struct timeval                nowTimeStruct;
+
+//#define BEACON_UUID \
+//    "8ec76ea3-6668-48da-9866-75be8bc86f4d" // UUID 1 128-Bit (may use linux tool uuidgen or random numbers via https://www.uuidgenerator.net/)
+
+unsigned int count = 1; //Number of messages sent
+unsigned long lastAdvertisedVoltage = 0;  // Last voltage advertised in BLE beacon
+unsigned long lastAdvertisedTimestamp = 0;  // Last voltage advertised in BLE beacon
+
+char *HMAC_KEY = "secretKey";  // <-- replace with your own secret                      
+
+static const uint8_t MAC_TRUNC_LEN = 4;   // bytes of HMAC to keep (4‑8 is typical)
+static const uint16_t ADV_INTERVAL_MS = 1000;
+static const uint8_t   EDDYSTONE_UUID[] = {0xAA, 0xFE}; // 0xFEAA (Eddystone)
+
+static uint32_t advCount = 0;   // number of advertisements sent
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+// DIY Smart Charger
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
 // Define OLED display dimensions and reset pin
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -24,9 +66,12 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define DOWN_PIN D9
 
 // Instantiate Button objects
-Button Mode_Button(MODE_PIN, 25, false, true);  // GPIO 3 on XIAO ESP32C3 (D3)
-Button UP_Button(UP_PIN, 25, false, true);      // GPIO 6 on XIAO ESP32C3 (D6)
-Button Down_Button(DOWN_PIN, 25, false, true);  // GPIO 9 on XIAO ESP32C3 (D9)
+Button Mode_Button(MODE_PIN, 15, false, true);  // GPIO 3 on XIAO ESP32C3 (D3)
+Button UP_Button(UP_PIN, 15, false, true);      // GPIO 6 on XIAO ESP32C3 (D6)
+Button Down_Button(DOWN_PIN, 15, false, true);  // GPIO 9 on XIAO ESP32C3 (D9)
+unsigned long upLastChange = 0;
+unsigned long downLastChange = 0;
+unsigned long modeLastChange = 0;
 
 // Mode selection variables
 int selectedMode = 0;
@@ -84,6 +129,27 @@ const float R2 = 100000.0;  // 100k ohms
 
 // ========================================= SETUP FUNCTION ========================================
 void setup() {
+    Serial.begin(115200);
+
+    NimBLEDevice::init("TLMBeacon");
+    NimBLEDevice::setPower(BEACON_POWER);
+
+    // Get the device's address
+    NimBLEAddress myAddress = NimBLEDevice::getAddress();
+    Serial.printf("BLE MAC Address: %s\n", myAddress.toString().c_str());
+
+    pAdvertising = NimBLEDevice::getAdvertising();
+
+    // We'll rebuild the whole Service Data each iteration
+    // because the MAC depends on the payload.
+    pAdvertising->setConnectableMode(BLE_GAP_CONN_MODE_NON);
+    uint16_t minInterval = ADV_INTERVAL_MS / 0.625; 
+    uint16_t maxInterval = ADV_INTERVAL_MS / 0.625; // Set min and max to the same value for a fixed interval
+
+    pAdvertising->setMinInterval(minInterval);
+    pAdvertising->setMaxInterval(maxInterval);
+    
+
     pinMode(PWM_Pin, OUTPUT);
     pinMode(Buzzer, OUTPUT);
     pinMode(Mosfet_Pin, OUTPUT);
@@ -102,14 +168,19 @@ void setup() {
     display.setTextColor(SSD1306_WHITE);
     // Display the Logo during startup 
     display.setTextSize(1);
-    display.setCursor(10, 25);
-    display.print("Open Green Energy");
+    display.setCursor(25, 12);
+    display.print("Lantau Hackers");
+    display.setCursor(25, 40);
+    display.print(myAddress.toString().c_str());
     display.display();
     delay(2000);
-    
+
     // Start mode selection
     selectMode();
+
 }
+
+
 
 // ========================================= LOOP FUNCTION ========================================
 void loop() {
@@ -137,25 +208,29 @@ void selectMode() {
         Down_Button.read();
 
         // Handle UP button press (move up in the menu)
-        if (UP_Button.isPressed()) {
+        if (UP_Button.isPressed() && UP_Button.lastChange() != upLastChange) {
             selectedMode = (selectedMode == 0) ? 3 : selectedMode - 1;  // If at the top, wrap around to the bottom
             beep(100);
-            delay(300);  // Debounce delay to prevent multiple presses
+            delay(100);  // Debounce delay to prevent multiple presses
         }
 
         // Handle DOWN button press (move down in the menu)
-        if (Down_Button.isPressed()) {
+        if (Down_Button.isPressed() && Down_Button.lastChange() != downLastChange) {
             selectedMode = (selectedMode == 3) ? 0 : selectedMode + 1;  // If at the bottom, wrap around to the top
             beep(100);
-            delay(300);  // Debounce delay to prevent multiple presses
+            delay(100);  // Debounce delay to prevent multiple presses
         }
 
         // Confirm selection with MODE button press
-        if (Mode_Button.isPressed()) {
+        if (Mode_Button.isPressed() && Mode_Button.lastChange() != modeLastChange) {
             beep(300);
             modeSelected = true;
-            delay(300);  // Debounce delay to prevent multiple presses
+            delay(100);  // Debounce delay to prevent multiple presses
         }
+
+        upLastChange = UP_Button.lastChange();
+        downLastChange = Down_Button.lastChange();
+        modeLastChange = Mode_Button.lastChange();
 
         // Display the menu options and highlight the selected one
         display.clearDisplay();
@@ -285,6 +360,14 @@ void chargeMode() {
         display.print("V");
         display.display();
 
+        bool voltage_changed = (lastAdvertisedVoltage != BAT_Voltage);
+        bool ten_sec_since_last_beacon = (elapsedTime - lastAdvertisedTimestamp) > 10000;
+        if (voltage_changed && ten_sec_since_last_beacon) {
+            lastAdvertisedVoltage = BAT_Voltage;
+            lastAdvertisedTimestamp = elapsedTime;
+            advertiseBeacon();
+        }
+
         // Check if battery voltage has reached the full battery level
         if (BAT_Voltage >= FULL_BAT_level) {
             Done = true;
@@ -346,6 +429,14 @@ void dischargeMode() {
             display.print(BAT_Voltage, 2);
             display.print("V");
             display.display();
+
+            bool voltage_changed = (lastAdvertisedVoltage != BAT_Voltage);
+            bool ten_sec_since_last_beacon = (elapsedTime - lastAdvertisedTimestamp) > 10000;
+            if (voltage_changed && ten_sec_since_last_beacon) {
+                lastAdvertisedVoltage = BAT_Voltage;
+                lastAdvertisedTimestamp = elapsedTime;
+                advertiseBeacon();
+            }
 
             if (BAT_Voltage <= cutoffVoltage) {
                 Done = true;
@@ -418,6 +509,14 @@ void analyzeMode() {
         display.print("V");
         display.display();
 
+        bool voltage_changed = (lastAdvertisedVoltage != BAT_Voltage);
+        bool ten_sec_since_last_beacon = (elapsedTime - lastAdvertisedTimestamp) > 10000;
+        if (voltage_changed && ten_sec_since_last_beacon) {
+            lastAdvertisedVoltage = BAT_Voltage;
+            lastAdvertisedTimestamp = elapsedTime;
+            advertiseBeacon();
+        }
+
         // Check if battery voltage has reached the full battery level
         if (BAT_Voltage >= FULL_BAT_level) {
             Done = true;
@@ -445,50 +544,58 @@ void analyzeMode() {
     digitalWrite(Mosfet_Pin, LOW);  // Ensure the charging MOSFET is off
     analogWrite(PWM_Pin, PWM_Value);  // Start discharging   
 
-            while (!Done) {
-            updateTiming();
-            BAT_Voltage = measureBatteryVoltage();  // Measure the battery voltage
+    while (!Done) {
+        updateTiming();
+        BAT_Voltage = measureBatteryVoltage();  // Measure the battery voltage
 
-            // Calculate time elapsed since the last update
-            unsigned long currentTime = millis();
-            float elapsedTimeInHours = (currentTime - lastUpdateTime) / 3600000.0;  // Convert ms to hours
+        // Calculate time elapsed since the last update
+        unsigned long currentTime = millis();
+        float elapsedTimeInHours = (currentTime - lastUpdateTime) / 3600000.0;  // Convert ms to hours
 
-            // Update capacity using I * t (Current * elapsed time)
-            if (calc) {
-                Capacity_f += (Current[PWM_Index] + currentOffset) * elapsedTimeInHours;  // Capacity in mAh
-                lastUpdateTime = currentTime;  // Update last update time
-            }
+        // Update capacity using I * t (Current * elapsed time)
+        if (calc) {
+            Capacity_f += (Current[PWM_Index] + currentOffset) * elapsedTimeInHours;  // Capacity in mAh
+            lastUpdateTime = currentTime;  // Update last update time
+        }
 
-            display.clearDisplay();
-            updateBatteryDisplay(false);  // Update battery icon (false for discharging)
-            display.setTextSize(1);
-            display.setCursor(10, 5);
-            display.print("Analyzing - D");
-            display.setCursor(15, 20);
-            display.print("Time: ");
-            display.print(Hour);
-            display.print(":");
-            display.print(Minute);
-            display.print(":");
-            display.print(Second);
-            display.setCursor(15, 35);
-            display.print("Cap:");
-            display.print(Capacity_f, 1);
-            display.print("mAh");
-            display.setCursor(15, 50);
-            display.print("V: ");
-            display.print(BAT_Voltage, 2);
-            display.print("V");
-            display.display();
+        display.clearDisplay();
+        updateBatteryDisplay(false);  // Update battery icon (false for discharging)
+        display.setTextSize(1);
+        display.setCursor(10, 5);
+        display.print("Analyzing - D");
+        display.setCursor(15, 20);
+        display.print("Time: ");
+        display.print(Hour);
+        display.print(":");
+        display.print(Minute);
+        display.print(":");
+        display.print(Second);
+        display.setCursor(15, 35);
+        display.print("Cap:");
+        display.print(Capacity_f, 1);
+        display.print("mAh");
+        display.setCursor(15, 50);
+        display.print("V: ");
+        display.print(BAT_Voltage, 2);
+        display.print("V");
+        display.display();
 
-            if (BAT_Voltage <= cutoffVoltage) {
-                Done = true;
-                analogWrite(PWM_Pin, 0);  // Stop discharging by turning off the load (PWM)
-                beep(300);  // Long beep to indicate discharging is complete
-                displayFinalCapacity(Capacity_f, false);  // Pass false for discharging complete
-            }
-          //  delay(100);
-        }       
+        bool voltage_changed = (lastAdvertisedVoltage != BAT_Voltage);
+        bool ten_sec_since_last_beacon = (elapsedTime - lastAdvertisedTimestamp) > 10000;
+        if (voltage_changed && ten_sec_since_last_beacon) {
+            lastAdvertisedVoltage = BAT_Voltage;
+            lastAdvertisedTimestamp = elapsedTime;
+            advertiseBeacon();
+        }
+
+        if (BAT_Voltage <= cutoffVoltage) {
+            Done = true;
+            analogWrite(PWM_Pin, 0);  // Stop discharging by turning off the load (PWM)
+            beep(300);  // Long beep to indicate discharging is complete
+            displayFinalCapacity(Capacity_f, false);  // Pass false for discharging complete
+        }
+        //  delay(100);
+    }       
 
     inAnalyzeMode = false;  // Reset analyze mode flag
     selectMode();  // Return to mode selection after analyzing
@@ -583,7 +690,7 @@ void displayFinalCapacity(float capacity, bool chargingComplete) {
     bool buttonPressed = false;
     while (!buttonPressed) {
         Mode_Button.read();
-               UP_Button.read();
+        UP_Button.read();
         Down_Button.read();
 
         if (Mode_Button.wasPressed() || UP_Button.wasPressed() || Down_Button.wasPressed()) {
@@ -606,21 +713,21 @@ bool selectCutoffVoltage() {
         Mode_Button.read();
 
         // Increase cutoff voltage with UP button
-        if (UP_Button.isPressed() && cutoffVoltage < Max_BAT_level) {
+        if (UP_Button.isPressed() && cutoffVoltage < Max_BAT_level && UP_Button.lastChange() != upLastChange) {
             cutoffVoltage += 0.1;
             beep(100);
             delay(300);
         }
 
         // Decrease cutoff voltage with DOWN button
-        if (Down_Button.isPressed() && cutoffVoltage > Min_BAT_level) {
+        if (Down_Button.isPressed() && cutoffVoltage > Min_BAT_level && Down_Button.lastChange() != downLastChange) {
             cutoffVoltage -= 0.1;
             beep(100);
             delay(300);
         }
 
         // Confirm cutoff voltage with MODE button
-        if (Mode_Button.isPressed()) {
+        if (Mode_Button.isPressed() && Mode_Button.lastChange() != modeLastChange) {
             cutoffSelected = true;
             beep(300);
         }
@@ -652,21 +759,21 @@ bool selectDischargeCurrent() {
         Mode_Button.read();
 
         // Increase discharge current with UP button
-        if (UP_Button.isPressed() && PWM_Index < (Array_Size - 1)) {
+        if (UP_Button.isPressed() && PWM_Index < (Array_Size - 1) && UP_Button.lastChange() != upLastChange) {
             PWM_Value = PWM[++PWM_Index];
             beep(100);
             delay(300);
         }
 
         // Decrease discharge current with DOWN button
-        if (Down_Button.isPressed() && PWM_Index > 0) {
+        if (Down_Button.isPressed() && PWM_Index > 0 && Down_Button.lastChange() != downLastChange) {
             PWM_Value = PWM[--PWM_Index];
             beep(100);
             delay(300);
         }
 
         // Confirm current selection with MODE button
-        if (Mode_Button.isPressed()) {
+        if (Mode_Button.isPressed() && Mode_Button.lastChange() != modeLastChange) {
             currentSelected = true;
             beep(300);
         }
@@ -747,5 +854,130 @@ void beep(int duration) {
     digitalWrite(Buzzer, LOW);
 }
 
+// ========================================= HMAC SUPPORT ========================================
 
-       
+// ------------------------------------------------------------------
+// 2️⃣ Helper: compute truncated HMAC‑SHA256 -----------------------
+void compute_hmac(char *key, char *payload, size_t payloadLength, uint8_t *out, size_t out_len)
+{
+  byte hmacResult[32];
+
+  mbedtls_md_context_t ctx;
+  mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+ 
+  //const size_t payloadLength = strlen(payload);
+  const size_t keyLength = strlen(key);               
+ 
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
+  mbedtls_md_hmac_starts(&ctx, (const unsigned char *) key, keyLength);
+  mbedtls_md_hmac_update(&ctx, (const unsigned char *) payload, payloadLength);
+  mbedtls_md_hmac_finish(&ctx, hmacResult);
+  mbedtls_md_free(&ctx);
+ 
+  Serial.print("\nHash: ");
+  printHex(hmacResult, sizeof(hmacResult));
+
+  // Copy only the first `out_len` bytes (truncated MAC)
+  memcpy(out, hmacResult, out_len);
+
+  Serial.print("\nOut: ");
+  printHex(out, out_len);
+}
+
+void printHex(byte * byteArray, size_t byteArraySize) {
+  for(int i= 0; i< byteArraySize; i++){
+      char str[3];
+ 
+      sprintf(str, "%02x", (int)byteArray[i]);
+      Serial.print(str);
+  }
+}
+
+// ========================================= BLUETOOTH SUPPORT ========================================
+
+// Check
+// https://github.com/google/eddystone/blob/master/eddystone-tlm/tlm-plain.md
+// and http://www.hugi.scene.org/online/coding/hugi%2015%20-%20cmtadfix.htm
+// for the temperature value. It is a 8.8 fixed-point notation
+void setBeacon() {
+    NimBLEEddystoneTLM eddystoneTLM;
+    eddystoneTLM.setVolt(ENDIAN_CHANGE_U16((uint16_t)(BAT_Voltage*1000))); // 3300mV = 3.3V
+    eddystoneTLM.setTemp(ENDIAN_CHANGE_U16((uint16_t)(Resistance*1000)));  // 3000 = 30.00 ˚C
+    eddystoneTLM.setTime(ENDIAN_CHANGE_U32((uint32_t)elapsedTime));
+    eddystoneTLM.setCount(ENDIAN_CHANGE_U32((uint32_t)count++));
+    //eddystoneTLM.setVolt(ENDIAN_CHANGE_U16((uint16_t)3765)); // 3300mV = 3.3V
+    //eddystoneTLM.setTemp(ENDIAN_CHANGE_U16((uint16_t)1234));  // 3000 = 30.00 ˚C
+    //eddystoneTLM.setTime(ENDIAN_CHANGE_U32((uint32_t)millis()));
+    //eddystoneTLM.setCount(ENDIAN_CHANGE_U32((uint32_t)count++));
+
+    //eddystoneTLM.setVolt(eddystoneTLM.getVolt()); /// Needed to fix inversion of endianness BUG
+    //eddystoneTLM.setTemp(eddystoneTLM.getTemp());  // Needed to fix inversion of endianness BUG
+    //eddystoneTLM.setTime(eddystoneTLM.getTime());
+    //eddystoneTLM.setCount(eddystoneTLM.getCount());
+
+    Serial.println();
+    Serial.printf("Battery voltage is %d mV = 0x%04X\n", eddystoneTLM.getVolt() , eddystoneTLM.getVolt());
+    Serial.printf("Resistance is: %d.%d 0x%04X\n", eddystoneTLM.getTemp(), eddystoneTLM.getTemp());
+    Serial.printf("Count is: %d = 0x%04X\n", eddystoneTLM.getCount(), eddystoneTLM.getCount());
+    Serial.printf("Time is: %d = 0x%04X\n", eddystoneTLM.getTime(), eddystoneTLM.getTime());
+
+
+    pAdvertising->clearData();   // remove previous Service Data
+
+    NimBLEAdvertisementData        oAdvertisementData = BLEAdvertisementData();
+    NimBLEAdvertisementData        oScanResponseData  = BLEAdvertisementData();
+    oAdvertisementData.setName("ESP32 TLM Beacon");
+    pAdvertising->setAdvertisementData(oAdvertisementData);
+
+    NimBLEEddystoneTLM::BeaconData beaconData         = eddystoneTLM.getData();
+    int beaconDataSize = sizeof(beaconData);
+
+    // ---- 3. Compute truncated HMAC over the 14‑byte payload ---------------
+    uint8_t* tlm;
+    tlm = reinterpret_cast<uint8_t*>(&beaconData); // 14 bytes payload
+
+
+    // ---- 4. Assemble Service Data: UUID + TLM + MAC ----------------------
+    const size_t SERVICE_DATA_LEN = beaconDataSize + MAC_TRUNC_LEN;
+    uint8_t serviceData[SERVICE_DATA_LEN];
+    memcpy(serviceData, tlm, beaconDataSize);
+
+    uint8_t mac[MAC_TRUNC_LEN];
+    //compute_hmac(tlm, beaconDataSize, mac, MAC_TRUNC_LEN);
+    compute_hmac(HMAC_KEY, (char*)tlm, beaconDataSize, mac, MAC_TRUNC_LEN);
+    Serial.print("\ntruncated mac ");
+    printHex(mac, MAC_TRUNC_LEN);
+    Serial.println();
+
+    memcpy(serviceData + beaconDataSize, mac, MAC_TRUNC_LEN);
+    Serial.print("payload = ");
+    printHex(serviceData, beaconDataSize+MAC_TRUNC_LEN);
+    Serial.println();
+
+    oScanResponseData.setServiceData(NimBLEUUID("FEAA"),
+                                     serviceData,
+                                     beaconDataSize+MAC_TRUNC_LEN);
+    pAdvertising->setScanResponseData(oScanResponseData);
+}
+
+void advertiseBeacon() {
+    //gettimeofday(&nowTimeStruct, NULL);
+
+    Serial.printf("Starting ESP32. Bootcount = %lu\n", bootcount++);
+    //Serial.printf("Deep sleep (%llds since last reset, %llds since last boot)\n",
+    //              nowTimeStruct.tv_sec,
+    //              nowTimeStruct.tv_sec - last);
+    //last = nowTimeStruct.tv_sec;
+    
+    setBeacon();
+    if(true || BAT_Voltage > 0) {
+        pAdvertising->start();
+        Serial.println("Advertising ...");
+        //delay(10000);
+        //pAdvertising->stop();
+    }
+
+    //Serial.printf("Enter deep sleep for 10s\n");
+    //esp_deep_sleep(1000000LL * GPIO_DEEP_SLEEP_DURATION);
+} 
