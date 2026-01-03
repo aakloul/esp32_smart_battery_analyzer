@@ -8,8 +8,9 @@ new curses view implement.
 from typing import Dict, Any
 
 from telemetry_repository import TelemetryRepository
-from curses_view import CursesView   # <-- import the curses version
+from curses_view import CursesView
 
+from app_logger import logger
 
 class TelemetryController:
     def __init__(self, repo: TelemetryRepository, view: CursesView):
@@ -17,15 +18,12 @@ class TelemetryController:
         self.view = view
 
     def handle_telemetry(self, decoded: Dict[str, Any], device_uuid: str) -> None:
-        # Persist the data
-        # ``device_name`` is optional – we forward the helper's default
 
+        # Persist the data
         telemetry = self.repo.save_telemetry(
             decoded=decoded,
             device_uuid=device_uuid,
         )
-
-        #battery = self.repo.get_battery_by_device_uuid(device_uuid)
 
         # Build the row the view expects
         view_row: Dict[str, Any] = {
@@ -36,3 +34,12 @@ class TelemetryController:
             "mode": "NORMAL",
         }
         self.view.update_row(device_uuid, view_row)
+
+        # log the record
+        logger.info(
+            "Telemetry received from %s – V=%dmV, adv=%d, uptime=%.1fs",
+            device_uuid,
+            decoded["battery_mv"],
+            decoded["adv_count"],
+            decoded["time_since_power_on_s"],
+        )

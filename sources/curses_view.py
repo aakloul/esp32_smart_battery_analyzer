@@ -8,6 +8,7 @@ the screen when instructed by the controller.
 
 import curses
 from typing import Dict, Any, List
+from app_logger import log_buffer   # shared in‑memory log deque
 
 
 class CursesView:
@@ -27,6 +28,9 @@ class CursesView:
         """
         self.stdscr = stdscr
         self._rows: Dict[str, Dict[str, Any]] = {}
+        self.mode: str = "table"          # start in telemetry table view
+        self.log_scroll: int = 0          # index of the first visible log line
+        self._needs_redraw = True         # force first draw
         self._init_curses()
 
     # ------------------------------------------------------------------
@@ -49,6 +53,61 @@ class CursesView:
         Store (or replace) the row for *device_uuid* and repaint the screen.
         """
         self._rows[device_uuid] = data
+        self._needs_redraw = True          # mark that UI must refresh
+        #self._render()
+
+
+    def run(self) -> None:
+        """Enter a tight loop that polls keys and redraws only when needed."""
+        while True:
+            self._handle_key()            # non‑blocking, cheap
+            if self._needs_redraw:
+                self._render()
+                self._needs_redraw = False
+            curses.napms(10)               # 10 ms pause → ~100 fps max, low CPU
+
+    # ------------------------------------------------------------------
+    # Key handling – called each loop iteration
+    # ------------------------------------------------------------------
+    def _handle_key(self) -> None:
+        """
+        Non‑blocking poll for a key press.
+        * `l` → switch to log view
+        * `t` → switch back to table view
+        * Arrow keys/PageUp/PageDown → scroll log view
+        """
+        try:
+            ch = self.stdscr.getch()
+        except Exception:
+            ch = -1
+
+        if ch == -1:
+            return  # no key pressed
+
+        if ch in (ord('l'), ord('L')):
+            self.mode = "log"
+            self.log_scroll = 0          # reset scroll when entering log view
+        elif ch in (ord('t'), ord('T')):
+            self.mode = "table"
+        elif self.mode == "log":
+            # Scrolling only works in log mode
+            max_y, _ = self.stdscr.getmaxyx()
+            visible_lines = max_y - 2      # leave room for footer
+            if ch in (curses.KEY_DOWN, ord('j')):
+                if self.log_scroll < max(0, len(log_buffer) - visible_lines):
+                    self.log_scroll += 1
+            elif ch in (curses.KEY_UP, ord('k')):
+                if self.log_scroll > 0:
+                    self.log_scroll -= 1
+            elif ch in (curses.KEY_NPAGE, ):   # Page Down
+                self.log_scroll = min(
+                    self.log_scroll + visible_lines,
+                    max(0, len(log_buffer) - visible_lines),
+                )
+            elif ch in (curses.KEY_PPAGE, ):   # Page Up
+                self.log_scroll = max(self.log_scroll - visible_lines, 0)
+
+        # Force a redraw after any key that changes the UI
         self._render()
 
     # ------------------------------------------------------------------
@@ -56,10 +115,23 @@ class CursesView:
     # ------------------------------------------------------------------
     def _render(self) -> None:
         """
-        Clear the window and draw the full table.  The method is fast enough
+        Clear the window and draw the full table or logs. Fast enough method
         for the modest amount of data we expect (a handful of beacons).
         """
         self.stdscr.erase()
+        if self.mode == "table":
+            self._draw_table()
+        else:
+            self._draw_log()
+        self._draw_footer()
+        self.stdscr.refresh()
+        # After rendering we also poll for a key so the UI feels responsive.
+        self._handle_key()
+
+    # ------------------------------------------------------------------
+    # Table view (unchanged except for being a private helper)
+    # ------------------------------------------------------------------
+    def _draw_table(self) -> None:
         max_y, max_x = self.stdscr.getmaxyx()
 
         # Compute column widths – give each column a minimum width.
@@ -77,7 +149,7 @@ class CursesView:
 
         # Body – one line per device, sorted by MAC for deterministic order
         for row_idx, mac in enumerate(sorted(self._rows.keys()), start=2):
-            if row_idx >= max_y:           # prevent overflow on very small terminals
+            if row_idx >= max_y - 1:           # prevent overflow on very small terminals
                 break
             row = self._rows[mac]
             cells = [
@@ -93,8 +165,38 @@ class CursesView:
                 self.stdscr.addstr(row_idx, x, cell)
                 x += w + 1
 
-        # Footer / instruction line
-        footer = "Press Ctrl‑C to quit"
-        self.stdscr.addstr(max_y - 1, 0, footer, curses.A_DIM)
 
-        self.stdscr.refresh()
+    # ------------------------------------------------------------------
+    # Log view – scrollable list of the most recent log lines
+    # ------------------------------------------------------------------
+    def _draw_log(self) -> None:
+        max_y, max_x = self.stdscr.getmaxyx()
+        visible_lines = max_y - 2               # reserve last line for footer
+
+        # Grab a slice of the deque based on the current scroll offset.
+        # `list(log_buffer)` converts the deque to a list for slicing.
+        logs = list(log_buffer)
+        start = self.log_scroll
+        end = start + visible_lines
+        for idx, line in enumerate(logs[start:end], start=0):
+            # Truncate line if it exceeds screen width
+            if len(line) > max_x:
+                line = line[: max_x - 1]
+            self.stdscr.addstr(idx, 0, line)
+
+        # If there are fewer lines than the screen height, fill the rest
+        for filler in range(len(logs[start:end]), visible_lines):
+            self.stdscr.move(filler, 0)
+            self.stdscr.clrtoeol()
+
+
+    # ------------------------------------------------------------------
+    # Footer – shows current mode and hint for toggling
+    # ------------------------------------------------------------------
+    def _draw_footer(self) -> None:
+        max_y, max_x = self.stdscr.getmaxyx()
+        mode_msg = f"[{'TABLE' if self.mode == 'table' else 'LOG'} MODE] "
+        hint = "Press 'l' for logs, 't' for table, Ctrl‑C to quit"
+        footer = (mode_msg + hint)[: max_x - 1]   # truncate if needed
+        self.stdscr.addstr(max_y - 1, 0, footer, curses.A_REVERSE)
+

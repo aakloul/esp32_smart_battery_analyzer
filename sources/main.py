@@ -22,8 +22,9 @@ from hex_helper import HexHelper
 from telemetry_db import TelemetryDB
 from telemetry_repository import TelemetryRepository
 
-from controller import TelemetryController
+import threading
 from curses_view import CursesView
+from controller import TelemetryController
 
 from eddystone_tlm_scanner import EddystoneScanner
 
@@ -62,17 +63,22 @@ async def scan(stdscr: curses.window) -> None:
     """
     scanner = build_components(stdscr)
 
+    # Start the UI loop in a *background* coroutine so we can still run asyncio.
+    # We'll run the UI loop in a separate thread because curses blocks.
+    ui_thread = threading.Thread(target=scanner.controller.view.run, daemon=True)
+    ui_thread.start()
+
     # ``BleakScanner`` expects a callable with the signature
     # (device: BLEDevice, advertisement_data: AdvertisementData)
     async with BleakScanner(scanner.detection_callback) as ble_scanner:
         # Show a short banner at the top while we wait for first beacon
         max_y, _ = stdscr.getmaxyx()
-        stdscr.addstr(max_y - 2, 0, "Scanning started – press Ctrl‑C to stop …")
+        stdscr.addstr(max_y - 2, 0, "[TABLE MODE] Scanning started – press Ctrl‑C to quit – 'l' for logs")
         stdscr.refresh()
 
         try:
             while True:
-                await asyncio.sleep(5)   # keep the event loop alive
+                await asyncio.sleep(0.02)   # keep the event loop alive
         except KeyboardInterrupt:
             print("\nInterrupted by user – stopping scan…")
         finally:
