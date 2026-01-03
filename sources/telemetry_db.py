@@ -5,6 +5,7 @@ File: telemetry_db.py
 Author: Adel Akloul
 Created: 2026‑01‑03
 Description:
+    Low‑level DAO (Data‑Access‑Object)
     A lightweight, type‑safe wrapper around an embedded SQLite database for
     storing battery telemetry data collected from devices. The module defines a 
     `TelemetryDB` class that implements full CRUD operations plus convenient 
@@ -27,34 +28,9 @@ from typing import Iterable, List, Optional
 import uuid
 import time
 
+from pathlib import Path
 
-# ----------------------------------------------------------------------
-# Dataclasses
-# ----------------------------------------------------------------------
-@dataclass
-class Device:
-    device_id: int                 # 1‑byte PK
-    device_uuid: bytes             # 16‑byte UUID (binary)
-    mac_address: bytes             # 6‑byte MAC (binary)
-
-
-@dataclass
-class Battery:
-    battery_id: int                # 1‑byte PK
-    device_id: int                 # FK → device.device_id
-    label: Optional[str] = None    # up to 256 chars
-
-
-@dataclass
-class Telemetry:
-    telemetry_id: Optional[int] = None   # auto‑generated PK (read‑only)
-    voltage: int = 0                      # 2‑byte
-    resistance: int = 0                   # 2‑byte
-    advCnt: int = 0                       # 4‑byte
-    timestamp: int = 0                    # 4‑byte Unix epoch
-    mode: int = 0                         # 1‑byte
-    battery_id: int = 0                   # FK → battery.battery_id
-
+from models import Device, Battery, Telemetry
 
 # ----------------------------------------------------------------------
 # Core wrapper – only the new lookup methods are highlighted
@@ -62,8 +38,8 @@ class Telemetry:
 class TelemetryDB:
     """CRUD wrapper for device, battery and telemetry tables."""
 
-    def __init__(self, path: str = "telemetry.db"):
-        self.conn = sqlite3.connect(path)
+    def __init__(self, db_path: str | Path = "telemetry.db"):
+        self.conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
         self.conn.row_factory = sqlite3.Row
         self._ensure_schema()
 
@@ -77,13 +53,15 @@ class TelemetryDB:
             PRAGMA foreign_keys = ON;
 
             CREATE TABLE IF NOT EXISTS device (
-                device_id   INTEGER PRIMARY KEY,
+                device_id   INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_uuid BLOB    NOT NULL,
-                mac_address BLOB    NOT NULL
+                name        TEXT(256),
+                mac_address BLOB    NOT NULL,
+                first_seen TIMESTAMP NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS battery (
-                battery_id  INTEGER PRIMARY KEY,
+                battery_id  INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id   INTEGER NOT NULL,
                 label       TEXT(256),
                 FOREIGN KEY(device_id) REFERENCES device(device_id)
@@ -91,11 +69,10 @@ class TelemetryDB:
             );
 
             CREATE TABLE IF NOT EXISTS telemetry (
-                telemetry_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 voltage     INTEGER NOT NULL,
                 resistance  INTEGER NOT NULL,
                 advCnt      INTEGER NOT NULL,
-                timestamp   INTEGER NOT NULL,
+                uptime_s    INTEGER NOT NULL,
                 mode        INTEGER NOT NULL,
                 battery_id  INTEGER NOT NULL,
                 FOREIGN KEY(battery_id) REFERENCES battery(battery_id)
@@ -128,21 +105,23 @@ class TelemetryDB:
         row = cur.fetchone()
         return self._row_to_dataclass(row, Device) if row else None
 
-    def insert_device(self, dev: Device) -> None:
+    def insert_device(self, dev: Device) -> int:
+        cur = self.conn.cursor()
         sql = """
-            INSERT INTO device (device_id, device_uuid, mac_address)
-            VALUES (?, ?, ?);
+            INSERT INTO device (device_id, device_uuid, mac_address, name, first_seen)
+            VALUES (?, ?, ?, ?, ?);
         """
-        self.conn.execute(sql, (dev.device_id, dev.device_uuid, dev.mac_address))
+        cur.execute(sql, (dev.device_id, dev.device_uuid, dev.mac_address, dev.name, dev.first_seen))
         self.conn.commit()
+        return cur.lastrowid
 
     def update_device(self, dev: Device) -> None:
         sql = """
             UPDATE device
-            SET device_uuid = ?, mac_address = ?
+            SET device_uuid = ?, mac_address = ?, name = ?
             WHERE device_id = ?;
         """
-        self.conn.execute(sql, (dev.device_uuid, dev.mac_address, dev.device_id))
+        self.conn.execute(sql, (dev.device_uuid, dev.mac_address, dev.name, dev.device_id))
         self.conn.commit()
 
     def delete_device(self, device_id: int) -> None:
@@ -165,21 +144,23 @@ class TelemetryDB:
         row = cur.fetchone()
         return self._row_to_dataclass(row, Battery) if row else None
 
-    def insert_battery(self, bat: Battery) -> None:
+    def insert_battery(self, bat: Battery) -> int:
+        cur = self.conn.cursor()
         sql = """
-            INSERT INTO battery (battery_id, device_id, label)
-            VALUES (?, ?, ?);
+            INSERT INTO battery (battery_id, device_id)
+            VALUES (?, ?);
         """
-        self.conn.execute(sql, (bat.battery_id, bat.device_id, bat.label))
+        cur.execute(sql, (bat.battery_id, bat.device_id))
         self.conn.commit()
+        return cur.lastrowid
 
     def update_battery(self, bat: Battery) -> None:
         sql = """
             UPDATE battery
-            SET device_id = ?, label = ?
+            SET device_id = ?, label = ?, capacity = ?
             WHERE battery_id = ?;
         """
-        self.conn.execute(sql, (bat.device_id, bat.label, bat.battery_id))
+        self.conn.execute(sql, (bat.device_id, bat.label, bat.capacity, bat.battery_id))
         self.conn.commit()
 
     def delete_battery(self, battery_id: int) -> None:
@@ -192,65 +173,43 @@ class TelemetryDB:
     #                     TELEMETRY CRUD
     # ==============================================================
 
-    def list_telemetry(self) -> Iterable[Telemetry]:
+    def list_telemetry(self) -> Iterable[Device]:
+        cur = self.conn.execute("SELECT * FROM telemetry ORDER BY battery_id, uptime_s asc;")
+        for r in cur:
+            yield self._row_to_dataclass(r, Telemetry)
+
+    def get_telemetry_by_battery_id(self, battery_id: int) -> Optional[Telemetry]:
         cur = self.conn.execute(
-            "SELECT * FROM telemetry ORDER BY telemetry_id;"
+            "SELECT * FROM telemetry WHERE battery_id = ? ORDER BY uptime_s dec;",
+            (battery_id,),
         )
         for r in cur:
             yield self._row_to_dataclass(r, Telemetry)
 
-    def get_telemetry(self, telemetry_id: int) -> Optional[Telemetry]:
-        cur = self.conn.execute(
-            "SELECT * FROM telemetry WHERE telemetry_id = ?;",
-            (telemetry_id,),
-        )
-        row = cur.fetchone()
-        return self._row_to_dataclass(row, Telemetry) if row else None
-
-    def insert_telemetry(self, tel: Telemetry) -> None:
+    def insert_telemetry(self, tel: Telemetry) -> int:
+        cur = self.conn.cursor()
         sql = """
             INSERT INTO telemetry
-                (voltage, resistance, advCnt, timestamp, mode, battery_id)
+                (voltage, resistance, advCnt, uptime_s, mode, battery_id)
             VALUES (?, ?, ?, ?, ?, ?);
         """
-        self.conn.execute(
+        cur.execute(
             sql,
             (
                 tel.voltage,
                 tel.resistance,
                 tel.advCnt,
-                tel.timestamp,
+                tel.uptime_s,
                 tel.mode,
                 tel.battery_id,
             ),
         )
         self.conn.commit()
+        return cur.lastrowid
 
-    def update_telemetry(self, tel: Telemetry) -> None:
-        if tel.telemetry_id is None:
-            raise ValueError("telemetry_id must be set for an update operation")
-        sql = """
-            UPDATE telemetry
-            SET voltage = ?, resistance = ?, advCnt = ?, timestamp = ?, mode = ?, battery_id = ?
-            WHERE telemetry_id = ?;
-        """
+    def delete_telemetry_by_battery_id(self, battery_id: int) -> None:
         self.conn.execute(
-            sql,
-            (
-                tel.voltage,
-                tel.resistance,
-                tel.advCnt,
-                tel.timestamp,
-                tel.mode,
-                tel.battery_id,
-                tel.telemetry_id,
-            ),
-        )
-        self.conn.commit()
-
-    def delete_telemetry(self, telemetry_id: int) -> None:
-        self.conn.execute(
-            "DELETE FROM telemetry WHERE telemetry_id = ?;", (telemetry_id,)
+            "DELETE FROM telemetry WHERE battery_id = ?;", (battery_id,)
         )
         self.conn.commit()
 
@@ -288,7 +247,7 @@ class TelemetryDB:
         slice, etc.
         """
         cur = self.conn.execute(
-            "SELECT * FROM telemetry WHERE battery_id = ? ORDER BY telemetry_id;",
+            "SELECT * FROM telemetry WHERE battery_id = ? ORDER BY uptime_s;",
             (battery_id,),
         )
         return [self._row_to_dataclass(r, Telemetry) for r in cur]

@@ -18,6 +18,7 @@ from typing import Dict, Any
 from bleak import BLEDevice, AdvertisementData
 
 from hex_helper import HexHelper
+from telemetry_repository import TelemetryRepository
 
 # ----------------------------------------------------------------------
 # Constants (identical to the original script)
@@ -27,13 +28,6 @@ EDDYSTONE_UUID = b"\xAA\xFE"          # 0xFEAA in little‑endian order
 TLM_FRAME_TYPE = 0x20                 # Fixed for TLM frames
 TLM_PAYLOAD_LEN = 14                  # Bytes after the UUID
 MAC_TRUNC_LEN = 4                     # Size of the truncated HMAC
-
-
-#def toHexString(_byteArray):
-#    return ":".join("{:02x}".format(int(c)) for c in _byteArray)
-#
-#def printHex(_byteArray):
-#    print(toHexString(_byteArray))
 
 class EddystoneScanner:
     """
@@ -51,8 +45,9 @@ class EddystoneScanner:
         the scanner class can read it if needed.
     """
 
-    def __init__(self, helper: HexHelper, device_name: str = "ESP32 TLM Beacon"):
+    def __init__(self, helper: HexHelper, repo: TelemetryRepository, device_name: str = "ESP32 TLM Beacon"):
         self.helper = helper
+        self.repo = repo
         # Keep the last decoded payload per device to avoid spamming the console.
         self._last_seen: Dict[str, Dict[str, Any]] = {}
         self.device_name = device_name
@@ -161,8 +156,14 @@ class EddystoneScanner:
                 print(f"  Battery:\t{decoded['battery_mv']} mV")
                 print(f"  Resistance:\t{decoded['resistance']:.2f} Ω")
                 print(f"  Adv cnt:\t{decoded['adv_count']}")
-                print(f"  Uptime:\t{decoded['time_since_power_on_s']:.1f}s")
+                print(f"  Uptime:\t{decoded['time_since_power_on_s']:.2f}s")
 
+# ----- Persist --------------------------------------------------------
+            # ``device_name`` is optional – we forward the helper's default.
+            self.repo.save_telemetry(
+                decoded=decoded,
+                device_uuid=device_address,
+            )
             # We processed the relevant service data – stop iterating.
             break
 
