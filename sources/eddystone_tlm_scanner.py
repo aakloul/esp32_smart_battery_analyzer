@@ -8,6 +8,10 @@ Contains the :class:`EddystoneScanner` class that knows how to decode an
 Eddystone‑TLM frame, extract it from a BLE advertisement and expose a
 callback suitable for ``BleakScanner``.
 
+Only the scanning / decoding logic lives here.  
+After a successful tlm frame is decoded, 
+it delegates to decoded tlm payload to the ``TelemetryController``.
+
 Author: Adel Akloul – adapted for XIAO ESP33‑C3 chargers
 """
 import struct
@@ -18,7 +22,7 @@ import asyncio
 from bleak import BLEDevice, AdvertisementData
 
 from hex_helper import HexHelper
-from telemetry_repository import TelemetryRepository
+from controller import TelemetryController
 
 # ----------------------------------------------------------------------
 # Constants (identical to the original script)
@@ -45,9 +49,9 @@ class EddystoneScanner:
         the scanner class can read it if needed.
     """
 
-    def __init__(self, helper: HexHelper, repo: TelemetryRepository, device_name: str = "ESP32 TLM Beacon"):
+    def __init__(self, helper: HexHelper, controller: TelemetryController, device_name: str = "ESP32 TLM Beacon"):
         self.helper = helper
-        self.repo = repo
+        self.controller = controller
         # Keep the last decoded payload per device to avoid spamming the console.
         self._last_seen: Dict[str, Dict[str, Any]] = {}
         self.device_name = device_name
@@ -152,18 +156,16 @@ class EddystoneScanner:
             if previous != decoded:
                 self._last_seen[device_address] = decoded
                 ts = datetime.now().strftime("%H:%M:%S")
-                print(f"\n[{ts}] Device {device_address}")
-                print(f"  Battery:\t{decoded['battery_mv']} mV")
-                print(f"  Resistance:\t{decoded['resistance']:.2f} Ω")
-                print(f"  Adv cnt:\t{decoded['adv_count']}")
-                print(f"  Uptime:\t{decoded['time_since_power_on_s']:.2f}s")
+                #print(f"\n[{ts}] Device {device_address}")
+                #print(f"  Battery:\t{decoded['battery_mv']} mV")
+                #print(f"  Resistance:\t{decoded['resistance']:.2f} Ω")
+                #print(f"  Adv cnt:\t{decoded['adv_count']}")
+                #print(f"  Uptime:\t{decoded['time_since_power_on_s']:.2f}s")
 
-# ----- Persist --------------------------------------------------------
-            # ``device_name`` is optional – we forward the helper's default.
-            self.repo.save_telemetry(
-                decoded=decoded,
-                device_uuid=device_address,
-            )
+            # ----- Persist --------------------------------------------------------
+            # ---------- Hand over to the controller ----------
+            self.controller.handle_telemetry(decoded, device_address)
+
             # We processed the relevant service data – stop iterating.
             break
 
