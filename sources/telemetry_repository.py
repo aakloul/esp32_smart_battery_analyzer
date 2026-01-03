@@ -21,10 +21,13 @@ class TelemetryRepository:
             self.device_map[device.device_uuid]=device
         self.battery_map: Dict[str, Battery] = {}
 
+    def get_battery_by_device_uuid(self, uuid: str) -> Battery:
+        return self.battery_map.get(uuid)
+
     # ------------------------------------------------------------------
     # Public entry point – called by the scanner after a successful decode
     # ------------------------------------------------------------------
-    def save_telemetry(self, decoded: dict, device_uuid: str | None = None) -> None:
+    def save_telemetry(self, decoded: dict, device_uuid: str | None = None) -> Telemetry:
         """
         Persist a decoded TLM payload.
 
@@ -41,7 +44,7 @@ class TelemetryRepository:
         """
         now = datetime.utcnow()
 
-        # 1️⃣ Ensure the device row exists (INSERT OR IGNORE)
+        # 2 Ensure the device row exists (INSERT OR IGNORE)
         device = self.device_map.get(device_uuid)
         if not device:
             device = Device(device_uuid=device_uuid, first_seen=now)
@@ -72,3 +75,4 @@ class TelemetryRepository:
             #recorded_at=now,
         )
         self.db.insert_telemetry(telemetry)
+        return telemetry
