@@ -16,7 +16,10 @@ class TelemetryRepository:
 
     def __init__(self, db: TelemetryDB):
         self.db = db
-        self.battery_map: Dict[str, str] = {}
+        self.device_map: Dict[str, Device] = {}
+        for device in db.list_devices():
+            self.device_map[device.device_uuid]=device
+        self.battery_map: Dict[str, Battery] = {}
 
     # ------------------------------------------------------------------
     # Public entry point – called by the scanner after a successful decode
@@ -39,22 +42,25 @@ class TelemetryRepository:
         now = datetime.utcnow()
 
         # 1️⃣ Ensure the device row exists (INSERT OR IGNORE)
-        device = Device(device_uuid=device_uuid, first_seen=now)
-        self.db.insert_device(device)
-        print(f"inserted device {device.device_id} with uuid {device.device_uuid}")
+        device = self.device_map.get(device_uuid)
+        if not device:
+            device = Device(device_uuid=device_uuid, first_seen=now)
+            device.device_id = self.db.insert_device(device)
+            self.device_map[device_uuid]=device
+            print(f"inserted device {device.device_id} with uuid {device.device_uuid}")
 
         # 2️⃣ Store a battery snapshot (optional – nice for separate charts)
-        battery_id = battery_map.get(device.device_id)
-        if not battery_id:
+        battery = self.battery_map.get(device.device_id)
+        if not battery:
             battery = Battery(
                 device_id=device.device_id,
                 #voltage_mv=decoded["battery_mv"],
                 #measured_at=now,
             )
-            self.db.insert_battery(battery)
-            battery_id = battery.battery_id
-            print(f"inserted battery {battery_id} from device {device.device_id}")
-            battery_map[device.device_id] = battery.battery_id
+            battery.battery_id = self.db.insert_battery(battery)
+            self.battery_map[device.device_id] = battery
+            print(f"inserted battery {battery.battery_id} from device {device.device_id}")
+        battery_id = battery.battery_id
 
         # 3️⃣ Store the core telemetry record
         telemetry = Telemetry(

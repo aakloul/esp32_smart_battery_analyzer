@@ -10,11 +10,11 @@ callback suitable for ``BleakScanner``.
 
 Author: Adel Akloul – adapted for XIAO ESP33‑C3 chargers
 """
-
 import struct
 from datetime import datetime
 from typing import Dict, Any
 
+import asyncio
 from bleak import BLEDevice, AdvertisementData
 
 from hex_helper import HexHelper

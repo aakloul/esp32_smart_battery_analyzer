@@ -55,7 +55,7 @@ def test_database() -> None:
     tel = Telemetry(
         voltage=3750,
         resistance=110,
-        advCnt=13,
+        adv_count=13,
         uptime_s=int(time.time()),
         mode=0x01,
         battery_id=bat.battery_id,

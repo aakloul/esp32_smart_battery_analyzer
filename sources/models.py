@@ -14,7 +14,7 @@ from typing import Optional
 @dataclass
 class Device:
     device_uuid: bytes                      # 16‑byte UUID (binary)
-    mac_address: bytes                      # 7‑byte MAC (binary)
+    mac_address: Optional[bytes] = None     # 6‑byte MAC (binary)
     device_id: int = field(default=None)    # 1‑byte PK
     name: Optional[str] = None  # Human readable name, if known
     first_seen: datetime = datetime.utcnow()
@@ -34,7 +34,7 @@ class Telemetry:
     """Core TLM record – one row per successful decode."""
     voltage: int = 0                # 2‑byte
     resistance: int = 0             # 2‑byte
-    advCnt: int = 0                 # 4‑byte
+    adv_count: int = 0              # 4‑byte
     uptime_s: int = 0               # 4‑byte Unix epoch
     mode: int = 0                   # 1‑byte
     battery_id: int = 0             # FK → battery.battery_id

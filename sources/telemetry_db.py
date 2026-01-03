@@ -56,7 +56,7 @@ class TelemetryDB:
                 device_id   INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_uuid BLOB    NOT NULL,
                 name        TEXT(256),
-                mac_address BLOB    NOT NULL,
+                mac_address BLOB,
                 first_seen TIMESTAMP NOT NULL
             );
 
@@ -71,7 +71,7 @@ class TelemetryDB:
             CREATE TABLE IF NOT EXISTS telemetry (
                 voltage     INTEGER NOT NULL,
                 resistance  INTEGER NOT NULL,
-                advCnt      INTEGER NOT NULL,
+                adv_count   INTEGER NOT NULL,
                 uptime_s    INTEGER NOT NULL,
                 mode        INTEGER NOT NULL,
                 battery_id  INTEGER NOT NULL,
@@ -190,7 +190,7 @@ class TelemetryDB:
         cur = self.conn.cursor()
         sql = """
             INSERT INTO telemetry
-                (voltage, resistance, advCnt, uptime_s, mode, battery_id)
+                (voltage, resistance, adv_count, uptime_s, mode, battery_id)
             VALUES (?, ?, ?, ?, ?, ?);
         """
         cur.execute(
@@ -198,7 +198,7 @@ class TelemetryDB:
             (
                 tel.voltage,
                 tel.resistance,
-                tel.advCnt,
+                tel.adv_count,
                 tel.uptime_s,
                 tel.mode,
                 tel.battery_id,
@@ -355,7 +355,7 @@ if __name__ == "__main__":
     tel = Telemetry(
         voltage=3700,
         resistance=120,
-        advCnt=7,
+        adv_count=7,
         timestamp=int(time.time()),
         mode=0x02,
         battery_id=bat.battery_id,
