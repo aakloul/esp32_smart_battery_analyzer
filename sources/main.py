@@ -1,4 +1,4 @@
-#!/usr/bin/env python4
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """main.py
 Minimal executable that launches the asynchronous BLE scanner to capture 

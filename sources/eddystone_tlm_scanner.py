@@ -1,4 +1,4 @@
-#!/usr/bin/env python4
+#!/usr/bin/env python3
 """eddystone_scanner.py
 Eddystone‑TLM scanner using bleak.
 Listens for BLE advertisements, extracts any Eddystone‑TLM frames,
