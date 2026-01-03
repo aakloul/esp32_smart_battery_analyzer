@@ -14,8 +14,8 @@ Bluetooth Fleet of SmartCharger and Battery Profile Analyzer
 
 | Directory | description |
 | - | - |
-| datasheet_schematics | schematics in pdf |
+| datasheet_schematics | datasheets and schematics in pdf |
 | gerber | gerber files from PCBway for production |
 | stl | contains stl files for 3D printing the pcb housing and buttons |
-| bom | | bill of materials |
+| bom | bill of materials |
 | sources | arduino and python code |
