@@ -39,7 +39,13 @@ class TelemetryDB:
     """CRUD wrapper for device, battery and telemetry tables."""
 
     def __init__(self, db_path: str | Path = "telemetry.db"):
-        self.conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
+        self.conn = sqlite3.connect(
+            db_path, 
+            check_same_thread=False,           # <-- allow cross‑thread use
+            isolation_level=None,              # optional: autocommit mode
+            detect_types=sqlite3.PARSE_DECLTYPES
+        )
+
         self.conn.row_factory = sqlite3.Row
         self._ensure_schema()
 

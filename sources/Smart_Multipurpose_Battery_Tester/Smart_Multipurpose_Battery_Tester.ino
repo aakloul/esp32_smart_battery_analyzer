@@ -408,8 +408,9 @@ void chargeMode() {
             if (voltage_changed && ten_sec_since_last_beacon) {
                 lastAdvertisedVoltage = BAT_Voltage;
                 lastAdvertisedTimestamp = elapsedTime;
-                advertiseBeacon();
+                //  advertiseBeacon();
             }
+            advertiseBeacon();
         }
 
         // Check if battery voltage has reached the full battery level
@@ -482,8 +483,9 @@ void dischargeMode() {
             if (voltage_changed && ten_sec_since_last_beacon) {
                 lastAdvertisedVoltage = BAT_Voltage;
                 lastAdvertisedTimestamp = elapsedTime;
-                advertiseBeacon();
+                //advertiseBeacon();
             }
+            advertiseBeacon();
 
             if (BAT_Voltage <= cutoffVoltage) {
                 Done = true;
@@ -592,8 +594,9 @@ void analyzeMode() {
         if (voltage_changed && ten_sec_since_last_beacon) {
             lastAdvertisedVoltage = BAT_Voltage;
             lastAdvertisedTimestamp = elapsedTime;
-            advertiseBeacon();
+            //advertiseBeacon();
         }
+        advertiseBeacon();
 
         // Check if battery voltage has reached the full battery level
         if (BAT_Voltage >= FULL_BAT_level) {
@@ -666,8 +669,9 @@ void analyzeMode() {
         if (voltage_changed && ten_sec_since_last_beacon) {
             lastAdvertisedVoltage = BAT_Voltage;
             lastAdvertisedTimestamp = elapsedTime;
-            advertiseBeacon();
+            //advertiseBeacon();
         }
+        advertiseBeacon();
 
         if (BAT_Voltage <= cutoffVoltage) {
             Done = true;
@@ -1017,16 +1021,7 @@ void setBeacon() {
     eddystoneTLM.setVolt(ENDIAN_CHANGE_U16((uint16_t)(BAT_Voltage*1000))); // 3300mV = 3.3V
     eddystoneTLM.setTemp(ENDIAN_CHANGE_U16((uint16_t)(InternalResistance*1000)));  // 3000 = 30.00 ˚C
     eddystoneTLM.setTime(ENDIAN_CHANGE_U32((uint32_t)elapsedTime));
-    eddystoneTLM.setCount(ENDIAN_CHANGE_U32((uint32_t)count++));
-    //eddystoneTLM.setVolt(ENDIAN_CHANGE_U16((uint16_t)3765)); // 3300mV = 3.3V
-    //eddystoneTLM.setTemp(ENDIAN_CHANGE_U16((uint16_t)1234));  // 3000 = 30.00 ˚C
-    //eddystoneTLM.setTime(ENDIAN_CHANGE_U32((uint32_t)millis()));
-    //eddystoneTLM.setCount(ENDIAN_CHANGE_U32((uint32_t)count++));
-
-    //eddystoneTLM.setVolt(eddystoneTLM.getVolt()); /// Needed to fix inversion of endianness BUG
-    //eddystoneTLM.setTemp(eddystoneTLM.getTemp());  // Needed to fix inversion of endianness BUG
-    //eddystoneTLM.setTime(eddystoneTLM.getTime());
-    //eddystoneTLM.setCount(eddystoneTLM.getCount());
+    eddystoneTLM.setCount(ENDIAN_CHANGE_U32((uint32_t)advCount++));
 
     Serial.println();
     Serial.printf("Battery voltage is %d mV = 0x%04X\n", eddystoneTLM.getVolt() , eddystoneTLM.getVolt());
@@ -1070,9 +1065,9 @@ void setBeacon() {
     //printHex(mac, MAC_TRUNC_LEN);
     //Serial.println();
     memcpy(serviceData + beaconDataSize + 3, mac, MAC_TRUNC_LEN);
-    Serial.print("\n--> payload = ");
-    printHex(serviceData, beaconDataSize+3+MAC_TRUNC_LEN);
-    Serial.println();
+    //Serial.print("\n--> payload = ");
+    //printHex(serviceData, beaconDataSize+3+MAC_TRUNC_LEN);
+    //Serial.println();
 
     oScanResponseData.setServiceData(NimBLEUUID("FEAA"),
                                      serviceData,
@@ -1083,7 +1078,7 @@ void setBeacon() {
 void advertiseBeacon() {
     //gettimeofday(&nowTimeStruct, NULL);
 
-    Serial.printf("Starting ESP32. Bootcount = %lu\n", bootcount++);
+    //Serial.printf("Starting ESP32. Bootcount = %lu\n", bootcount++);
     //Serial.printf("Deep sleep (%llds since last reset, %llds since last boot)\n",
     //              nowTimeStruct.tv_sec,
     //              nowTimeStruct.tv_sec - last);
@@ -1092,7 +1087,7 @@ void advertiseBeacon() {
     setBeacon();
     if(true || BAT_Voltage > 0) {
         pAdvertising->start();
-        Serial.println("Advertising ...");
+        //Serial.println("Advertising ...");
         //delay(10000);
         //pAdvertising->stop();
     }

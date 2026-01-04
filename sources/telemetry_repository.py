@@ -25,6 +25,12 @@ class TelemetryRepository:
     def get_battery_by_device_uuid(self, uuid: str) -> Battery:
         return self.battery_map.get(uuid)
 
+    def update_battery_label(self, device_uuid, new_battery_label):
+        battery = self.battery_map.get(device_uuid)
+        battery.label = new_battery_label
+        self.db.update_battery(battery)
+
+
     # ------------------------------------------------------------------
     # Public entry point – called by the scanner after a successful decode
     # ------------------------------------------------------------------

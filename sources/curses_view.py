@@ -18,7 +18,7 @@ class CursesView:
     which is the device MAC address itself).
     """
 
-    HEADER = ["device_uuid", "battery_label", "capacity", "resistance", "voltage (mV)",
+    HEADER = ["device_uuid", "battery_label", "capacity_mAh", "resistance_mΩ", "voltage_mV",
               "adv_count", "uptime_s", "mode"]
 
     def __init__(self, stdscr: curses.window) -> None:
@@ -32,6 +32,7 @@ class CursesView:
         self.log_scroll: int = 0          # index of the first visible log line
         self._needs_redraw = True         # force first draw
         self._init_curses()
+        self.on_battery_label_change = None
 
     # ------------------------------------------------------------------
     # Curses initialisation (colors, etc.)
@@ -52,7 +53,8 @@ class CursesView:
         """
         Store (or replace) the row for *device_uuid* and repaint the screen.
         """
-        self._rows[device_uuid] = data
+        data["device_uuid"]=device_uuid
+        self._rows[str(data["battery_label"])] = data
         self._needs_redraw = True          # mark that UI must refresh
         #self._render()
 
@@ -84,7 +86,47 @@ class CursesView:
         if ch == -1:
             return  # no key pressed
 
-        if ch in (ord('l'), ord('L')):
+
+        # Begin edit sequence
+        if ch in (ord('c'), ord('C')):
+            # 1️⃣ Ask which battery_label we want to edit
+            target_str = self.prompt_number(
+                           "Edit which battery_label? (enter number): ")
+            if not target_str.isdigit():
+                # Not a number – flash a warning
+                max_y, _ = self.stdscr.getmaxyx()
+                self.stdscr.addstr(max_y - 3, 2,
+                              "Please enter a numeric value.", curses.A_BLINK)
+                self.stdscr.refresh()
+                curses.napms(1200)
+                #draw_table(stdscr)
+                #return
+
+            #target = int(target_str)
+            target = target_str
+
+            # 2️⃣ Locate the row (first match)
+
+            # row_index = next((i for i, r in enumerate(sorted(self._rows.keys()), start=2) if r == target), None)
+
+            row = self._rows.get(target)
+            if row:
+                # Highlight the row while we edit it
+                #self.draw_table(stdscr, selected_row=row_index)
+                self._draw_table()
+                #self.edit_row(self.stdscr, row_index)
+                self.edit_row(row['device_uuid'], target)
+                self.stdscr.refresh()
+            else:
+                # Not found – flash a short message
+                max_y, _ = self.stdscr.getmaxyx()
+                self.stdscr.addstr(max_y - 3, 2,
+                              f"No row with battery_label={target}", curses.A_BLINK)
+                self.stdscr.refresh()
+                curses.napms(1500)
+
+
+        elif ch in (ord('l'), ord('L')):
             self.mode = "log"
             self.log_scroll = 0          # reset scroll when entering log view
         elif ch in (ord('t'), ord('T')):
@@ -152,11 +194,11 @@ class CursesView:
         self.stdscr.hline(1, 0, curses.ACS_HLINE, max_x)
 
         # Body – one line per device, sorted by battery_id for deterministic order
-        for row_idx, mac in enumerate(sorted(self._rows.keys()), start=2):
+        for row_idx, battery_label in enumerate(sorted(self._rows.keys()), start=2):
             if row_idx >= max_y - 1:           # prevent overflow on very small terminals
                 break
 
-            row = self._rows[mac]
+            row = self._rows[battery_label]
             uptime = int(row.get("uptime_s", "0"))
             hour   = (int)(uptime / 3600)
             minute = (int)(uptime / 60) % 60
@@ -165,8 +207,8 @@ class CursesView:
             capacity = row.get("capacity", "") / 10.0
             
             cells = [
-                mac.ljust(col_widths[0]),
-                str(row.get("battery_label", "")).rjust(col_widths[1]),
+                str(row.get("device_uuid")).ljust(col_widths[0]),
+                str(battery_label).rjust(col_widths[1]),
                 f"{capacity:.1f}".rjust(col_widths[2]),
                 str(row.get("resistance", "")).rjust(col_widths[2]),
                 str(row.get("voltage", "")).rjust(col_widths[2]),
@@ -179,6 +221,44 @@ class CursesView:
                 self.stdscr.addstr(row_idx, x, cell)
                 x += w + 1
 
+
+    def prompt_number(self, prompt_msg):
+        """
+        Generic helper that shows a centred one‑line input box,
+        echoes the user's typing, and returns the typed string.
+        """
+        curses.curs_set(1)                     # show cursor
+        max_y, max_x = self.stdscr.getmaxyx()
+        win_h, win_w = 3, 48
+        win_y = max_y // 2 - win_h // 2
+        win_x = max_x // 2 - win_w // 2
+
+        win = curses.newwin(win_h, win_w, win_y, win_x)
+        win.box()
+        win.addstr(1, 2, prompt_msg)
+        win.refresh()
+
+        curses.echo()
+        win.move(1, len(prompt_msg) + 2)
+        user_input = win.getstr().decode("utf-8")
+        curses.noecho()
+        curses.curs_set(0)
+
+        return user_input.strip()
+
+    def edit_row(self, device_uuid, battery_label):
+        """Prompt for a new battery_label value and store it."""
+        new_val = self.prompt_number(
+                        f"New battery_label for (old={self._rows[battery_label]['battery_label']}): ")
+        try:
+            self._rows[battery_label]["battery_label"] = new_val
+            self._rows[new_val]=self._rows[battery_label]
+            del self._rows[battery_label]
+        except ValueError:
+            # Invalid entry – just ignore, keep the old value
+            pass
+        self.on_battery_label_change(device_uuid, new_val)
+        self._needs_redraw = True          # mark that UI must refresh
 
     # ------------------------------------------------------------------
     # Log view – scrollable list of the most recent log lines
