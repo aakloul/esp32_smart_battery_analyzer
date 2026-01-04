@@ -821,6 +821,10 @@ bool selectCutoffVoltage() {
             beep(300);
         }
 
+        upLastChange = UP_Button.lastChange();
+        downLastChange = Down_Button.lastChange();
+        modeLastChange = Mode_Button.lastChange();
+
         // Update OLED with selected cutoff voltage
         display.clearDisplay();
         display.setTextSize(1);
@@ -866,6 +870,10 @@ bool selectDischargeCurrent() {
             currentSelected = true;
             beep(300);
         }
+
+        upLastChange = UP_Button.lastChange();
+        downLastChange = Down_Button.lastChange();
+        modeLastChange = Mode_Button.lastChange();
 
         // Update the OLED display with the selected current
         display.clearDisplay();
