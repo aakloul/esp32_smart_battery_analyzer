@@ -74,4 +74,5 @@ class HexHelper:
             ``True`` if the computed truncated MAC matches the supplied one.
         """
         full_hmac = hmac.new(self.secret_key, tlm, hashlib.sha256).digest()
+        #print("truncated", self.to_hex_string(full_hmac[:trunc_len]))
         return full_hmac[:trunc_len] == mac

@@ -27,6 +27,7 @@ class Battery:
     battery_id: int = field(default=None)   # 1‑byte PK
     label: Optional[str] = None             # up to 256 chars
     capacity: int = 0                       # real measured capacity in mah 
+    resistance: int = 0                     # 2‑byte
 
 
 @dataclass
@@ -34,8 +35,10 @@ class Telemetry:
     """Core TLM record – one row per successful decode."""
     voltage: int = 0                # 2‑byte
     resistance: int = 0             # 2‑byte
+    capacity: int = 0               # 2‑byte
     adv_count: int = 0              # 4‑byte
     uptime_s: int = 0               # 4‑byte Unix epoch
     mode: int = 0                   # 1‑byte
+    recorded_at: datetime = datetime.utcnow
     battery_id: int = 0             # FK → battery.battery_id
 

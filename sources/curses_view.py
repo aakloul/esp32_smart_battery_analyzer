@@ -18,7 +18,7 @@ class CursesView:
     which is the device MAC address itself).
     """
 
-    HEADER = ["device_uuid", "battery_id", "voltage (mV)",
+    HEADER = ["device_uuid", "battery_label", "capacity", "resistance", "voltage (mV)",
               "adv_count", "uptime_s", "mode"]
 
     def __init__(self, stdscr: curses.window) -> None:
@@ -155,14 +155,20 @@ class CursesView:
         for row_idx, mac in enumerate(sorted(self._rows.keys()), start=2):
             if row_idx >= max_y - 1:           # prevent overflow on very small terminals
                 break
+
             row = self._rows[mac]
             uptime = int(row.get("uptime_s", "0"))
             hour   = (int)(uptime / 3600)
             minute = (int)(uptime / 60) % 60
             second = (int)(uptime % 60)
+
+            capacity = row.get("capacity", "") / 10.0
+            
             cells = [
                 mac.ljust(col_widths[0]),
-                str(row.get("battery_id", "")).rjust(col_widths[1]),
+                str(row.get("battery_label", "")).rjust(col_widths[1]),
+                f"{capacity:.1f}".rjust(col_widths[2]),
+                str(row.get("resistance", "")).rjust(col_widths[2]),
                 str(row.get("voltage", "")).rjust(col_widths[2]),
                 str(row.get("adv_count", "")).rjust(col_widths[3]),
                 f"{hour:02d}:{minute:02d}:{second:02d}".rjust(col_widths[4]),

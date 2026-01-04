@@ -30,7 +30,7 @@ from controller import TelemetryController
 EDDYSTONE_SERVICE_UUID = "0000feaa-0000-1000-8000-00805f9b34fb"
 EDDYSTONE_UUID = b"\xAA\xFE"          # 0xFEAA in little‑endian order
 TLM_FRAME_TYPE = 0x20                 # Fixed for TLM frames
-TLM_PAYLOAD_LEN = 14                  # Bytes after the UUID
+TLM_PAYLOAD_LEN = 17                  # Bytes after the UUID
 MAC_TRUNC_LEN = 4                     # Size of the truncated HMAC
 
 class EddystoneScanner:
@@ -72,21 +72,25 @@ class EddystoneScanner:
             )
 
         (
-            frame_type,
-            version,
-            batt_mv,
-            temp_raw,
-            adv_cnt,
-            time_0_1s,
-        ) = struct.unpack(">BBHhII", payload)
+            frame_type, # B - 1 byte
+            version,    # B - 1 byte
+            batt_mv,    # H - 2 bytes
+            temp_raw,   # h - 2 bytes
+            adv_cnt,    # I - 4 bytes
+            time_0_1s,  # I - 4 bytes
+            mode,       # B - 1 byte
+            capacity,   # H - 2 bytes
+        ) = struct.unpack(">BBHhIIBH", payload)     # > Big Endian
 
         return {
             "frame_type": frame_type,
             "version": version,
             "battery_mv": batt_mv,
             "resistance": temp_raw,
+            "capacity": capacity,
             "adv_count": adv_cnt,
             "time_since_power_on_s": time_0_1s / 1000.0,
+            "mode": mode,
         }
 
     # ------------------------------------------------------------------
@@ -108,8 +112,7 @@ class EddystoneScanner:
             if uuid != EDDYSTONE_SERVICE_UUID:
                 continue
 
-            #print("data", len(data), self.helper.to_hex_string(data))
-            #print("data", len(data), toHexString(data))
+            # print("data", len(data), self.helper.to_hex_string(data))
 
             # At this point `data` starts with the TLM payload (no UUID prefix)
             # Some implementations prepend the UUID again – handle both cases.
@@ -122,8 +125,8 @@ class EddystoneScanner:
                 mac = data[-MAC_TRUNC_LEN:]
                 raw = data[:-MAC_TRUNC_LEN]
 
-                #print("mac", len(mac), self.helper.to_hex_string(mac))
-                #print("tlm", len(raw), self.helper.to_hex_string(raw))
+                # print("mac", len(mac), self.helper.to_hex_string(mac))
+                # print("tlm", len(raw), self.helper.to_hex_string(raw))
 
                 # Verify the HMAC before proceeding
                 if not self.helper.verify_signature(raw, mac):
@@ -181,6 +184,7 @@ class EddystoneScanner:
         try:
             if device.name == self.device_name:
                 #print(f"Device found: {device.name} - Address: {device.address}")
+                # print(advertisement_data)
                 self.parse_advertisement(device.address, advertisement_data)
         except asyncio.CancelledError:
             # Propagate cancellation so the outer event loop can shut down cleanly.
