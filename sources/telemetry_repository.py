@@ -8,6 +8,7 @@ from datetime import datetime
 from models import Device, Battery, Telemetry
 from telemetry_db import TelemetryDB
 
+from app_logger import logger
 
 class TelemetryRepository:
     """
@@ -50,7 +51,7 @@ class TelemetryRepository:
             device = Device(device_uuid=device_uuid, first_seen=now)
             device.device_id = self.db.insert_device(device)
             self.device_map[device_uuid]=device
-            print(f"inserted device {device.device_id} with uuid {device.device_uuid}")
+            logger.info(f"inserted device {device.device_id} with uuid {device.device_uuid}")
 
         # 2️⃣ Store a battery snapshot (optional – nice for separate charts)
         battery = self.battery_map.get(device.device_id)
@@ -62,7 +63,7 @@ class TelemetryRepository:
             )
             battery.battery_id = self.db.insert_battery(battery)
             self.battery_map[device.device_id] = battery
-            print(f"inserted battery {battery.battery_id} from device {device.device_id}")
+            logger.info(f"inserted battery {battery.battery_id} from device {device.device_id}")
         battery_id = battery.battery_id
 
         # 3️⃣ Store the core telemetry record

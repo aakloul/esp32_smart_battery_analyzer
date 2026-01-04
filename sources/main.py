@@ -73,7 +73,7 @@ async def scan(stdscr: curses.window) -> None:
     async with BleakScanner(scanner.detection_callback) as ble_scanner:
         # Show a short banner at the top while we wait for first beacon
         max_y, _ = stdscr.getmaxyx()
-        stdscr.addstr(max_y - 2, 0, "[TABLE MODE] Scanning started – press Ctrl‑C to quit – 'l' for logs")
+        stdscr.addstr(max_y - 1, 0, "[TABLE MODE] Scanning started – press Ctrl‑C to quit – 'l' for logs")
         stdscr.refresh()
 
         try:
