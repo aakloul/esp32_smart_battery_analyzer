@@ -48,6 +48,16 @@ static const uint8_t   EDDYSTONE_UUID[] = {0xAA, 0xFE}; // 0xFEAA (Eddystone)
 
 static uint32_t advCount = 0;   // number of advertisements sent
 
+// ------------------------------------------------------------
+// Voltage‑stagnation detector (used in chargeMode)
+// ------------------------------------------------------------
+float   lastSeenVoltage      = 0.0;                     // voltage the last time we saw a rise
+unsigned long lastRiseMillis = 0;                       // millis() when that rise happened
+const unsigned long STAGNATION_TIMEOUT = 10UL * 60UL * 1000UL; // 10 min in ms
+const float MIN_RISE_V       = 5;                             // 5 mV = 0.005 V
+bool    stagnationDetected   = false;                    // flag to can act on
+bool    voltageDropDetected  = false;                    // flag to can act on
+                                              
 //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 // DIY Smart Charger
 //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -338,42 +348,74 @@ void chargeMode() {
     // If the battery voltage is between Min_BAT_level and FULL_BAT_level, proceed with charging
     digitalWrite(Mosfet_Pin, HIGH);  // Turn on MOSFET to start charging
 
+    // ---- reset stagnation detector for this session ----
+    lastSeenVoltage     = BAT_Voltage;         // current voltage is our baseline
+    lastRiseMillis      = millis();            // start the timer
+    stagnationDetected  = false;
+    voltageDropDetected = false;
+
     while (!Done) {
         updateTiming();
         BAT_Voltage = measureBatteryVoltage();  // Measure battery voltage    
-        display.clearDisplay();
-        // Simulate battery charging progression
-        updateBatteryDisplay(true);  // True indicates charging
-        display.setTextSize(1);
-        display.setCursor(25, 5);
-        display.print("Charging..");
-        display.setCursor(40, 25);
-        display.print(Hour);
-        display.print(":");
-        display.print(Minute);
-        display.print(":");
-        display.print(Second);       
-        display.setTextSize(2);
-        display.setCursor(15, 40);
-        display.print("V:");
-        display.print(BAT_Voltage,2);
-        display.print("V");
-        display.display();
 
-        bool voltage_changed = (lastAdvertisedVoltage != BAT_Voltage);
-        bool ten_sec_since_last_beacon = (elapsedTime - lastAdvertisedTimestamp) > 10000;
-        if (voltage_changed && ten_sec_since_last_beacon) {
-            lastAdvertisedVoltage = BAT_Voltage;
-            lastAdvertisedTimestamp = elapsedTime;
-            advertiseBeacon();
+        // ------------------------------------------------------------
+        //  Stagnation detection
+        // ------------------------------------------------------------
+        if (BAT_Voltage - lastSeenVoltage > MIN_RISE_V) {
+            // We saw a meaningful rise – move the “last good” marker forward
+            lastSeenVoltage = BAT_Voltage;
+            lastRiseMillis   = millis();
+        } else if (millis() - lastRiseMillis >= STAGNATION_TIMEOUT) {
+            // No rise of ≥0.1 mV for 10 min → flag it
+            stagnationDetected = true;
+            if (BAT_Voltage - lastSeenVoltage < 0) {
+                voltageDropDetected = true;
+            }
+        }
+
+        // react immediately here, e.g. stop charging: 
+        //e.g send a beacon or increase charging voltage in a controlled manner
+        if (stagnationDetected) { /* … */ 
+            Done = true;
+            digitalWrite(Mosfet_Pin, LOW);  // Turn off MOSFET to stop charging
+        } else {
+            display.clearDisplay();
+            // Simulate battery charging progression
+            updateBatteryDisplay(true);  // True indicates charging
+            display.setTextSize(1);
+            display.setCursor(25, 5);
+            display.print("Charging..");
+            display.setCursor(40, 25);
+            if(Hour < 10) display.print(0);
+            display.print(Hour);
+            display.print(":");
+            if(Minute < 10) display.print(0);
+            display.print(Minute);
+            display.print(":");
+            if(Second < 10) display.print(0);
+            display.print(Second);       
+            display.setTextSize(2);
+            display.setCursor(15, 40);
+            display.print("V:");
+            display.print(BAT_Voltage,2);
+            display.print("V");
+            display.display();
+
+            bool voltage_changed = (lastAdvertisedVoltage != BAT_Voltage);
+            bool ten_sec_since_last_beacon = (elapsedTime - lastAdvertisedTimestamp) > 10000;
+            if (voltage_changed && ten_sec_since_last_beacon) {
+                lastAdvertisedVoltage = BAT_Voltage;
+                lastAdvertisedTimestamp = elapsedTime;
+                advertiseBeacon();
+            }
         }
 
         // Check if battery voltage has reached the full battery level
-        if (BAT_Voltage >= FULL_BAT_level) {
+        if (BAT_Voltage >= FULL_BAT_level || stagnationDetected) {
             Done = true;
             digitalWrite(Mosfet_Pin, LOW);  // Turn off MOSFET to stop charging
             beep(300);  // Beep to indicate charging is complete
-            displayFinalCapacity(Capacity_f, true);  // Pass true for charging complete            
+            displayFinalCapacity(Capacity_f, true, stagnationDetected);  // Pass true for charging complete            
         }  
         //  delay(100);      
     }
@@ -415,10 +457,13 @@ void dischargeMode() {
             display.print("Discharging..");
             display.setCursor(15, 20);
             display.print("Time: ");
+            if(Hour < 10) display.print(0);
             display.print(Hour);
             display.print(":");
+            if(Minute < 10) display.print(0);
             display.print(Minute);
             display.print(":");
+            if(Second < 10) display.print(0);
             display.print(Second);
             display.setCursor(15, 35);
             display.print("Cap:");
@@ -442,7 +487,7 @@ void dischargeMode() {
                 Done = true;
                 analogWrite(PWM_Pin, 0);  // Stop discharging by turning off the load (PWM)
                 beep(300);  // Long beep to indicate discharging is complete
-                displayFinalCapacity(Capacity_f, false);  // Pass false for discharging complete
+                displayFinalCapacity(Capacity_f, false, false);  // Pass false for discharging complete
             }
           //  delay(100);
         }
@@ -487,27 +532,58 @@ void analyzeMode() {
     // Step 2: Charge the battery until full
     digitalWrite(Mosfet_Pin, HIGH);  // Turn on MOSFET to start charging
 
+    // ---- reset stagnation detector for this session ----
+    lastSeenVoltage     = BAT_Voltage;         // current voltage is our baseline
+    lastRiseMillis      = millis();            // start the timer
+    stagnationDetected  = false;
+    voltageDropDetected = true;
+
     while (!Done) {
         updateTiming();
         BAT_Voltage = measureBatteryVoltage();  // Measure battery voltage    
-        display.clearDisplay();
-        // Simulate battery charging progression
-        updateBatteryDisplay(true);  // True indicates charging
-        display.setTextSize(1);
-        display.setCursor(10, 5);
-        display.print("Analyzing - C");
-        display.setCursor(40, 25);
-        display.print(Hour);
-        display.print(":");
-        display.print(Minute);
-        display.print(":");
-        display.print(Second);       
-        display.setTextSize(2);
-        display.setCursor(15, 40);
-        display.print("V:");
-        display.print(BAT_Voltage,2);
-        display.print("V");
-        display.display();
+
+        // ------------------------------------------------------------
+        //  Stagnation detection
+        // ------------------------------------------------------------
+        if (BAT_Voltage - lastSeenVoltage > MIN_RISE_V) {
+            // We saw a meaningful rise – move the “last good” marker forward
+            lastSeenVoltage = BAT_Voltage;
+            lastRiseMillis   = millis();
+        } else if (millis() - lastRiseMillis >= STAGNATION_TIMEOUT) {
+            // No rise of ≥0.1 mV for 10 min → flag it
+            stagnationDetected = true;
+            if (BAT_Voltage - lastSeenVoltage < 0) {
+                voltageDropDetected = true;
+            }
+        }
+
+        // eact immediately here, e.g. stop charging:
+        if (stagnationDetected) { /* … */ 
+            Done = true;
+            digitalWrite(Mosfet_Pin, LOW);  // Turn off MOSFET to stop charging
+        } else {
+            display.clearDisplay();
+            // Simulate battery charging progression
+            updateBatteryDisplay(true);  // True indicates charging
+            display.setTextSize(1);
+            display.setCursor(10, 5);
+            display.print("Analyzing - C");
+            display.setCursor(40, 25);
+            if(Hour < 10) display.print(0);
+            display.print(Hour);
+            display.print(":");
+            if(Minute < 10) display.print(0);
+            display.print(Minute);
+            display.print(":");
+            if(Second < 10) display.print(0);
+            display.print(Second);       
+            display.setTextSize(2);
+            display.setCursor(15, 40);
+            display.print("V:");
+            display.print(BAT_Voltage,2);
+            display.print("V");
+            display.display();
+        }
 
         bool voltage_changed = (lastAdvertisedVoltage != BAT_Voltage);
         bool ten_sec_since_last_beacon = (elapsedTime - lastAdvertisedTimestamp) > 10000;
@@ -565,10 +641,13 @@ void analyzeMode() {
         display.print("Analyzing - D");
         display.setCursor(15, 20);
         display.print("Time: ");
+        if(Hour < 10) display.print(0);
         display.print(Hour);
         display.print(":");
+        if(Minute < 10) display.print(0);
         display.print(Minute);
         display.print(":");
+        if(Second < 10) display.print(0);
         display.print(Second);
         display.setCursor(15, 35);
         display.print("Cap:");
@@ -592,7 +671,7 @@ void analyzeMode() {
             Done = true;
             analogWrite(PWM_Pin, 0);  // Stop discharging by turning off the load (PWM)
             beep(300);  // Long beep to indicate discharging is complete
-            displayFinalCapacity(Capacity_f, false);  // Pass false for discharging complete
+            displayFinalCapacity(Capacity_f, false, stagnationDetected);  // Pass false for discharging complete
         }
         //  delay(100);
     }       
@@ -652,19 +731,28 @@ void internalResistanceMode() {
 }
 
 // ========================================= FINAL CAPACITY DISPLAY ON OLED ========================================
-void displayFinalCapacity(float capacity, bool chargingComplete) {
+void displayFinalCapacity(float capacity, bool chargingComplete, bool stagnationDetected) {
     display.clearDisplay();
 
     // Display "Complete" message and final capacity
     display.setTextSize(1);
     display.setCursor(15, 5);
-    display.print("Complete");
+    if (voltageDropDetected) {
+      display.print("Voltage Drop!!!");
+    } else if (stagnationDetected) {
+      display.print("Stagnation!!!");
+    } else {
+      display.print("Complete");
+    }
     display.setCursor(15, 20);
     display.print("Time: ");
+    if(Hour < 10) display.print(0);
     display.print(Hour);
     display.print(":");
+    if(Minute < 10) display.print(0);
     display.print(Minute);
     display.print(":");
+    if(Second < 10) display.print(0);
     display.print(Second);
     display.setCursor(15, 35);
     display.print("Cap:");
@@ -703,6 +791,7 @@ void displayFinalCapacity(float capacity, bool chargingComplete) {
     // Once a button is pressed, return to mode selection
     selectMode();
 }
+
 
 // ========================================= SELECT CUTOFF VOLTAGE ========================================
 bool selectCutoffVoltage() {

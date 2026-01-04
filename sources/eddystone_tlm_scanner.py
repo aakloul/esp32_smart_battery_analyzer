@@ -162,9 +162,9 @@ class EddystoneScanner:
                 #print(f"  Adv cnt:\t{decoded['adv_count']}")
                 #print(f"  Uptime:\t{decoded['time_since_power_on_s']:.2f}s")
 
-            # ----- Persist --------------------------------------------------------
-            # ---------- Hand over to the controller ----------
-            self.controller.handle_telemetry(decoded, device_address)
+                # ----- Persist if different then previous -----------------------------
+                # ---------- Hand over to the controller ----------
+                self.controller.handle_telemetry(decoded, device_address)
 
             # We processed the relevant service data – stop iterating.
             break

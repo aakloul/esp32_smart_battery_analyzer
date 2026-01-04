@@ -136,29 +136,37 @@ class CursesView:
 
         # Compute column widths – give each column a minimum width.
         col_widths = [max(len(h), 12) for h in self.HEADER]
+        col_widths[0] = 32
 
         # Header line
         x = 0
         for idx, (title, w) in enumerate(zip(self.HEADER, col_widths)):
-            txt = title.ljust(w)
+            if (x == 0):
+                txt = title.ljust(w)
+            else:
+                txt = title.rjust(w)
             self.stdscr.addstr(0, x, txt, self.header_attr)
-            x += w + 1                     # +1 for a space between cols
+            x += w + 1                     # Add +1 for a space between cols
 
         # Horizontal separator
         self.stdscr.hline(1, 0, curses.ACS_HLINE, max_x)
 
-        # Body – one line per device, sorted by MAC for deterministic order
+        # Body – one line per device, sorted by battery_id for deterministic order
         for row_idx, mac in enumerate(sorted(self._rows.keys()), start=2):
             if row_idx >= max_y - 1:           # prevent overflow on very small terminals
                 break
             row = self._rows[mac]
+            uptime = int(row.get("uptime_s", "0"))
+            hour   = (int)(uptime / 3600)
+            minute = (int)(uptime / 60) % 60
+            second = (int)(uptime % 60)
             cells = [
                 mac.ljust(col_widths[0]),
-                str(row.get("battery_id", "")).ljust(col_widths[1]),
-                str(row.get("voltage", "")).ljust(col_widths[2]),
-                str(row.get("adv_count", "")).ljust(col_widths[3]),
-                f"{row.get('uptime_s', 0):.1f}".ljust(col_widths[4]),
-                str(row.get("mode", "")).ljust(col_widths[5]),
+                str(row.get("battery_id", "")).rjust(col_widths[1]),
+                str(row.get("voltage", "")).rjust(col_widths[2]),
+                str(row.get("adv_count", "")).rjust(col_widths[3]),
+                f"{hour:02d}:{minute:02d}:{second:02d}".rjust(col_widths[4]),
+                str(row.get("mode", "")).rjust(col_widths[5]),
             ]
             x = 0
             for cell, w in zip(cells, col_widths):
