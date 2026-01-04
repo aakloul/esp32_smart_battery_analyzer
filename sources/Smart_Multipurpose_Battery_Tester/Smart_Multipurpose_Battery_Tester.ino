@@ -98,7 +98,7 @@ const float NO_BAT_level = 0.3;  // Define voltage for empty slot
 int Current[] = {0, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000};
 int PWM[] = {0, 4, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
 int Array_Size = sizeof(Current) / sizeof(Current[0]);
-int Current_Value = 0;
+//int Current_Value = 0;
 int currentOffset = 25; // Default offset current
 int PWM_Value = 0;
 int PWM_Index = 0;
@@ -108,7 +108,7 @@ float Capacity_f = 0;
 float Vref_Voltage = 1.227;  // LM385-1.2V reference voltage ( adjust it for calibration )
 float Vcc = 3.3;
 float BAT_Voltage = 0;
-float Resistance = 0;
+float InternalResistance = 0;
 float sample = 0;
 bool calc = false, Done = false, Report_Info = true;
 
@@ -384,7 +384,9 @@ void chargeMode() {
             updateBatteryDisplay(true);  // True indicates charging
             display.setTextSize(1);
             display.setCursor(25, 5);
-            display.print("Charging..");
+            display.print("Charging ");
+            display.print(Current[PWM_Index]);
+            display.print("mA");
             display.setCursor(40, 25);
             if(Hour < 10) display.print(0);
             display.print(Hour);
@@ -415,7 +417,7 @@ void chargeMode() {
             Done = true;
             digitalWrite(Mosfet_Pin, LOW);  // Turn off MOSFET to stop charging
             beep(300);  // Beep to indicate charging is complete
-            displayFinalCapacity(Capacity_f, true, stagnationDetected);  // Pass true for charging complete            
+            displayFinalCapacity(true, stagnationDetected);  // Pass true for charging complete            
         }  
         //  delay(100);      
     }
@@ -487,7 +489,7 @@ void dischargeMode() {
                 Done = true;
                 analogWrite(PWM_Pin, 0);  // Stop discharging by turning off the load (PWM)
                 beep(300);  // Long beep to indicate discharging is complete
-                displayFinalCapacity(Capacity_f, false, false);  // Pass false for discharging complete
+                displayFinalCapacity(false, false);  // Pass false for discharging complete
             }
           //  delay(100);
         }
@@ -536,7 +538,7 @@ void analyzeMode() {
     lastSeenVoltage     = BAT_Voltage;         // current voltage is our baseline
     lastRiseMillis      = millis();            // start the timer
     stagnationDetected  = false;
-    voltageDropDetected = true;
+    voltageDropDetected = false;
 
     while (!Done) {
         updateTiming();
@@ -671,7 +673,7 @@ void analyzeMode() {
             Done = true;
             analogWrite(PWM_Pin, 0);  // Stop discharging by turning off the load (PWM)
             beep(300);  // Long beep to indicate discharging is complete
-            displayFinalCapacity(Capacity_f, false, stagnationDetected);  // Pass false for discharging complete
+            displayFinalCapacity(false, stagnationDetected);  // Pass false for discharging complete
         }
         //  delay(100);
     }       
@@ -684,7 +686,6 @@ void analyzeMode() {
 void internalResistanceMode() {
     float voltageNoLoad = 0;
     float voltageLoad = 0;
-    float internalResistance = 0;
     bool resistanceMeasured = false;
 
     digitalWrite(Mosfet_Pin, LOW);  // Ensure the charging MOSFET is off
@@ -707,19 +708,22 @@ void internalResistanceMode() {
 
     // Step 4: Calculate internal resistance using Ohm's Law
     if (currentDrawn > 0) {
-        internalResistance = (voltageNoLoad - voltageLoad) / currentDrawn;  // R = (V_no_load - V_load) / I
+        InternalResistance = (voltageNoLoad - voltageLoad) / currentDrawn;  // R = (V_no_load - V_load) / I
     } else {
-        internalResistance = 0;  // Avoid division by zero
+        InternalResistance = 0;  // Avoid division by zero
     }
 
     // Display the IR test results
-    displayIRTestIcon(voltageNoLoad, voltageLoad, internalResistance);
+    displayIRTestIcon(voltageNoLoad, voltageLoad);
 
     // Beep to indicate completion of the IR measurement
     beep(300);
 
     // Step 5: Turn off the load after measurement
     analogWrite(PWM_Pin, 0);  // Stop the current flow
+
+    advertiseBeacon();
+
     delay(5000);  // Wait for the user to read the display
 
     resistanceMeasured = true;
@@ -731,7 +735,7 @@ void internalResistanceMode() {
 }
 
 // ========================================= FINAL CAPACITY DISPLAY ON OLED ========================================
-void displayFinalCapacity(float capacity, bool chargingComplete, bool stagnationDetected) {
+void displayFinalCapacity(bool chargingComplete, bool stagnationDetected) {
     display.clearDisplay();
 
     // Display "Complete" message and final capacity
@@ -842,6 +846,12 @@ bool selectCutoffVoltage() {
 
 // ========================================= SELECT DISCHARGE CURRENT ========================================
 bool selectDischargeCurrent() {
+    return selectCurrentLoad("Dischrg");
+}
+bool selectChargeCurrent() {
+    return selectCurrentLoad("Chrg");
+}
+bool selectCurrentLoad(char* mode) {
     bool currentSelected = false;
     PWM_Index = 0;
     PWM_Value = PWM[PWM_Index];
@@ -879,7 +889,9 @@ bool selectDischargeCurrent() {
         display.clearDisplay();
         display.setTextSize(1);
         display.setCursor(2, 10);
-        display.print("Select Dischrg Curr:");
+        display.print("Select ");
+        display.print(mode);
+        display.print(" Curr:");
         display.setTextSize(2);
         display.setCursor(15, 30);
         display.print("I:");
@@ -925,7 +937,7 @@ void updateBatteryDisplay(bool charging) {
 }
 
 // ========================================= DRAW ICON FOR IR TEST ========================================
-void displayIRTestIcon(float voltageNoLoad, float voltageLoad, float internalResistance) {
+void displayIRTestIcon(float voltageNoLoad, float voltageLoad) {
     display.clearDisplay();
 
     // Drawing a resistor-like icon (simple lines and zig-zag), centered horizontally and shifted 5 pixels up
@@ -939,7 +951,7 @@ void displayIRTestIcon(float voltageNoLoad, float voltageLoad, float internalRes
     display.setTextSize(2);
     display.setCursor(2, 35);
     display.print("IR:");
-    display.print(internalResistance * 1000, 0);  // Display internal resistance in milliohms
+    display.print(InternalResistance * 1000, 0);  // Display internal resistance in milliohms
     display.print("mOhm");
     display.display();  // Update the OLED display
 }
@@ -972,6 +984,9 @@ void compute_hmac(char *key, char *payload, size_t payloadLength, uint8_t *out, 
   mbedtls_md_hmac_finish(&ctx, hmacResult);
   mbedtls_md_free(&ctx);
  
+  Serial.print("\nTLM: ");
+  printHex((byte*)payload, payloadLength);
+
   Serial.print("\nHash: ");
   printHex(hmacResult, sizeof(hmacResult));
 
@@ -1000,7 +1015,7 @@ void printHex(byte * byteArray, size_t byteArraySize) {
 void setBeacon() {
     NimBLEEddystoneTLM eddystoneTLM;
     eddystoneTLM.setVolt(ENDIAN_CHANGE_U16((uint16_t)(BAT_Voltage*1000))); // 3300mV = 3.3V
-    eddystoneTLM.setTemp(ENDIAN_CHANGE_U16((uint16_t)(Resistance*1000)));  // 3000 = 30.00 ˚C
+    eddystoneTLM.setTemp(ENDIAN_CHANGE_U16((uint16_t)(InternalResistance*1000)));  // 3000 = 30.00 ˚C
     eddystoneTLM.setTime(ENDIAN_CHANGE_U32((uint32_t)elapsedTime));
     eddystoneTLM.setCount(ENDIAN_CHANGE_U32((uint32_t)count++));
     //eddystoneTLM.setVolt(ENDIAN_CHANGE_U16((uint16_t)3765)); // 3300mV = 3.3V
@@ -1018,6 +1033,7 @@ void setBeacon() {
     Serial.printf("Resistance is: %d.%d 0x%04X\n", eddystoneTLM.getTemp(), eddystoneTLM.getTemp());
     Serial.printf("Count is: %d = 0x%04X\n", eddystoneTLM.getCount(), eddystoneTLM.getCount());
     Serial.printf("Time is: %d = 0x%04X\n", eddystoneTLM.getTime(), eddystoneTLM.getTime());
+    Serial.printf("Capacity is: %d mAh = 0x%04X\n", int(Capacity_f*10), int(Capacity_f*10));
 
 
     pAdvertising->clearData();   // remove previous Service Data
@@ -1033,28 +1049,34 @@ void setBeacon() {
     // ---- 3. Compute truncated HMAC over the 14‑byte payload ---------------
     uint8_t* tlm;
     tlm = reinterpret_cast<uint8_t*>(&beaconData); // 14 bytes payload
-
-
     // ---- 4. Assemble Service Data: UUID + TLM + MAC ----------------------
-    const size_t SERVICE_DATA_LEN = beaconDataSize + MAC_TRUNC_LEN;
+    const size_t SERVICE_DATA_LEN = beaconDataSize + 3 + MAC_TRUNC_LEN;
     uint8_t serviceData[SERVICE_DATA_LEN];
     memcpy(serviceData, tlm, beaconDataSize);
 
-    uint8_t mac[MAC_TRUNC_LEN];
-    //compute_hmac(tlm, beaconDataSize, mac, MAC_TRUNC_LEN);
-    compute_hmac(HMAC_KEY, (char*)tlm, beaconDataSize, mac, MAC_TRUNC_LEN);
-    Serial.print("\ntruncated mac ");
-    printHex(mac, MAC_TRUNC_LEN);
-    Serial.println();
+    uint8_t* _selectedModeByte = reinterpret_cast<uint8_t*>(&selectedMode); // 1 byte payload
+    memcpy(serviceData + beaconDataSize, _selectedModeByte, 1);
+    
+    
+    uint16_t capacity_le = static_cast<uint16_t>(roundf(Capacity_f * 10.0f));   // little-endian
+    uint16_t capacity_be = ENDIAN_CHANGE_U16(capacity_le);                      // big-endian
+    uint16_t* _capacityByte = reinterpret_cast<uint16_t*>(&capacity_be);        // 2 byte pointer
+    memcpy(serviceData + beaconDataSize + 1, _capacityByte, 2);                 // write 2 bytes
 
-    memcpy(serviceData + beaconDataSize, mac, MAC_TRUNC_LEN);
-    Serial.print("payload = ");
-    printHex(serviceData, beaconDataSize+MAC_TRUNC_LEN);
+
+    uint8_t mac[MAC_TRUNC_LEN];
+    compute_hmac(HMAC_KEY, (char*)serviceData, beaconDataSize+3, mac, MAC_TRUNC_LEN);
+    //Serial.print("\ntruncated mac ");
+    //printHex(mac, MAC_TRUNC_LEN);
+    //Serial.println();
+    memcpy(serviceData + beaconDataSize + 3, mac, MAC_TRUNC_LEN);
+    Serial.print("\n--> payload = ");
+    printHex(serviceData, beaconDataSize+3+MAC_TRUNC_LEN);
     Serial.println();
 
     oScanResponseData.setServiceData(NimBLEUUID("FEAA"),
                                      serviceData,
-                                     beaconDataSize+MAC_TRUNC_LEN);
+                                     beaconDataSize+3+MAC_TRUNC_LEN);
     pAdvertising->setScanResponseData(oScanResponseData);
 }
 

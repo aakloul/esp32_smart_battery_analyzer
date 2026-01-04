@@ -54,7 +54,7 @@ class TelemetryRepository:
             logger.info(f"inserted device {device.device_id} with uuid {device.device_uuid}")
 
         # 2️⃣ Store a battery snapshot (optional – nice for separate charts)
-        battery = self.battery_map.get(device.device_id)
+        battery = self.battery_map.get(device_uuid)
         if not battery:
             battery = Battery(
                 device_id=device.device_id,
@@ -62,7 +62,7 @@ class TelemetryRepository:
                 #measured_at=now,
             )
             battery.battery_id = self.db.insert_battery(battery)
-            self.battery_map[device.device_id] = battery
+            self.battery_map[device_uuid] = battery
             logger.info(f"inserted battery {battery.battery_id} from device {device.device_id}")
         battery_id = battery.battery_id
 
@@ -71,9 +71,19 @@ class TelemetryRepository:
             battery_id=battery_id,
             voltage=decoded["battery_mv"],
             resistance=decoded["resistance"],
+            capacity=decoded["capacity"],
             adv_count=decoded["adv_count"],
             uptime_s=decoded["time_since_power_on_s"],
-            #recorded_at=now,
+            mode=decoded["mode"],
+            recorded_at=now,
         )
         self.db.insert_telemetry(telemetry)
+
+        if (telemetry.resistance > 0):
+            battery.resistance = telemetry.resistance
+            self.db.update_battery(battery)
+        if (telemetry.capacity > 0):
+            battery.capacity = telemetry.capacity
+            self.db.update_battery(battery)
+
         return telemetry
