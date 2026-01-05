@@ -1,0 +1,10 @@
+## WARNING
+- IRL540 has been discontinued and is no longer found in the market
+- PCBWay will propose a replacement with IRFZ44NPBF, but DO NOT ACCEPT as it won't work: Swapping an IRL540 for an IRFZ44N in a low-voltage gate drive circuit results in the latter to not turn on, causing no or limited current being drawn
+
+## Alternatives
+
+For direct use with 3.3V/5V microcontrollers (like Arduino), the IRLZ44N (logic-level) is a better, more efficient choice than the standard IRFZ44N. The primary difference is that the IRLZ44N is a logic-level MOSFET, meaning it can be fully controlled by low-voltage logic (like a 3.3V or 5V microcontroller I/O pin, e.g esp32 chip), while the IRFZ44N is a standard-level MOSFET that requires a higher gate voltage (typically 10V) for full turn-on. 
+
+See this [Reddit post](https://www.reddit.com/r/AskElectronics/comments/q2pisu/irl_vs_irf_mosfet_can_i_use_an_irf_mosfet_for/#:~:text=IRF3708:%20Rds(on)%20is,thus%20standard%2Dlevel.) for more alternatives.
+
