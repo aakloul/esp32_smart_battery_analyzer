@@ -81,7 +81,7 @@ class TelemetryLivePlot:
             0.02, 0.5, annotation_text,
             transform=self.ax_volt.transAxes,   # use axes‑fraction coordinates
             ha="left", va="center",           # left‑aligned, vertically centered
-            fontsize=9,
+            fontsize=10,
             color="#555555",                  # a neutral gray that doesn’t clash
             bbox=dict(facecolor="white", edgecolor="#dddddd", pad=3)
         )
@@ -118,7 +118,7 @@ class TelemetryLivePlot:
             0.98, 0.98, "",
             transform=self.ax_cap.transAxes,
             ha="right", va="top",
-            fontsize=9,
+            fontsize=10,
             color="#ff7f0e",
             backgroundcolor="w",
             bbox=dict(facecolor="white", edgecolor="#ff7f0e", pad=1.5)
@@ -287,7 +287,7 @@ if __name__ == "__main__":
     plot1 = TelemetryLivePlot(db_path=DB_PATH,
                               battery_id=BATTERY_ID,
                               interval_ms=2000,
-                              max_points=2000)
+                              max_points=100000)
     plot1.run()
 
     # to plot a second battery in the same process:
