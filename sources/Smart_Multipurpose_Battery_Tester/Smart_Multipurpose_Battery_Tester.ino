@@ -202,8 +202,10 @@ void loop() {
         } else if (selectedMode == 2) {
             analyzeMode();
         } else if (selectedMode == 3) {
-            internalResistanceMode();  // IR test mode added
+            internalResistanceMode();   // IR test mode added
+            delay(5000);                // Wait for the user to read the display
         }
+        selectMode();  // Return to mode selection after task is completed
     }
 }
 
@@ -331,7 +333,7 @@ void chargeMode() {
         display.print("EMPTY BAT SLOT");
         display.display();
         delay(3000);  // Wait for 3 seconds
-        selectMode();  // Return to mode selection
+        //selectMode();  // Return to mode selection
         return;
     } else if (BAT_Voltage < DAMAGE_BAT_level) {
         // If battery voltage is below DAMAGE_BAT_level but above NO_BAT_level, consider the battery damaged
@@ -341,7 +343,7 @@ void chargeMode() {
         display.print("BAT DAMAGED");
         display.display();
         delay(3000);  // Wait for 3 seconds
-        selectMode();  // Return to mode selection
+        //selectMode();  // Return to mode selection
         return;
     } 
 
@@ -422,7 +424,7 @@ void chargeMode() {
         }  
         //  delay(100);      
     }
-    selectMode();  // Return to mode selection after charging is complete
+    //selectMode();  // Return to mode selection after charging is complete
 }
 
 // ========================================= DISCHARGE MODE ========================================
@@ -496,11 +498,14 @@ void dischargeMode() {
           //  delay(100);
         }
     }
-    selectMode();  // Return to mode selection after discharging is complete
+    //selectMode();  // Return to mode selection after discharging is complete
 }
 
 // ========================================= ANALYZE MODE ========================================
 void analyzeMode() {
+    internalResistanceMode(); 
+    delay(1000);
+
     inAnalyzeMode = true;  // Set analyze mode flag to true
     calc = true;
     Done = false;
@@ -519,7 +524,7 @@ void analyzeMode() {
         display.print("EMPTY BAT SLOT");
         display.display();
         delay(3000);  // Wait for 3 seconds
-        selectMode();  // Return to mode selection
+        //selectMode();  // Return to mode selection
         return;
     } else if (BAT_Voltage < DAMAGE_BAT_level) {
         // If battery voltage is below DAMAGE_BAT_level but above NO_BAT_level, consider the battery damaged
@@ -529,7 +534,7 @@ void analyzeMode() {
         display.print("BAT DAMAGED");
         display.display();
         delay(3000);  // Wait for 3 seconds
-        selectMode();  // Return to mode selection
+        //selectMode();  // Return to mode selection
         return;
     }
 
@@ -683,14 +688,14 @@ void analyzeMode() {
     }       
 
     inAnalyzeMode = false;  // Reset analyze mode flag
-    selectMode();  // Return to mode selection after analyzing
+    //selectMode();  // Return to mode selection after analyzing
 }
 
 // ========================================= INTERNAL RESISTANCE MODE ========================================
 void internalResistanceMode() {
     float voltageNoLoad = 0;
     float voltageLoad = 0;
-    bool resistanceMeasured = false;
+    //bool resistanceMeasured = false;
 
     digitalWrite(Mosfet_Pin, LOW);  // Ensure the charging MOSFET is off
 
@@ -728,14 +733,14 @@ void internalResistanceMode() {
 
     advertiseBeacon();
 
-    delay(5000);  // Wait for the user to read the display
+    //delay(5000);  // Wait for the user to read the display
 
-    resistanceMeasured = true;
+    //resistanceMeasured = true;
 
     // Return to the mode selection if measurement is complete
-    if (resistanceMeasured) {
-        selectMode();
-    }
+    //if (resistanceMeasured) {
+    //    selectMode();
+    //}
 }
 
 // ========================================= FINAL CAPACITY DISPLAY ON OLED ========================================
@@ -1058,20 +1063,24 @@ void setBeacon() {
     uint16_t* _capacityByte = reinterpret_cast<uint16_t*>(&capacity_be);        // 2 byte pointer
     memcpy(serviceData + beaconDataSize + 1, _capacityByte, 2);                 // write 2 bytes
 
+    uint16_t discharge_current_le = static_cast<uint16_t>(Current[PWM_Index] + currentOffset);   // little-endian
+    uint16_t discharge_current_be = ENDIAN_CHANGE_U16(discharge_current_le);                      // big-endian
+    uint16_t* _discharge_currentByte = reinterpret_cast<uint16_t*>(&discharge_current_be);        // 2 byte pointer
+    memcpy(serviceData + beaconDataSize + 3, _discharge_currentByte, 2);                // write 2 bytes
 
     uint8_t mac[MAC_TRUNC_LEN];
-    compute_hmac(HMAC_KEY, (char*)serviceData, beaconDataSize+3, mac, MAC_TRUNC_LEN);
+    compute_hmac(HMAC_KEY, (char*)serviceData, beaconDataSize+5, mac, MAC_TRUNC_LEN);
     //Serial.print("\ntruncated mac ");
     //printHex(mac, MAC_TRUNC_LEN);
     //Serial.println();
-    memcpy(serviceData + beaconDataSize + 3, mac, MAC_TRUNC_LEN);
+    memcpy(serviceData + beaconDataSize + 5, mac, MAC_TRUNC_LEN);
     //Serial.print("\n--> payload = ");
     //printHex(serviceData, beaconDataSize+3+MAC_TRUNC_LEN);
     //Serial.println();
 
     oScanResponseData.setServiceData(NimBLEUUID("FEAA"),
                                      serviceData,
-                                     beaconDataSize+3+MAC_TRUNC_LEN);
+                                     beaconDataSize+5+MAC_TRUNC_LEN);
     pAdvertising->setScanResponseData(oScanResponseData);
 }
 

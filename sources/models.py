@@ -28,6 +28,7 @@ class Battery:
     label: Optional[str] = None             # up to 256 chars
     capacity: int = 0                       # real measured capacity in mah 
     resistance: int = 0                     # 2‑byte
+    discharge_current: int = 0              # 2‑byte
 
 
 @dataclass
@@ -39,6 +40,7 @@ class Telemetry:
     adv_count: int = 0              # 4‑byte
     uptime_s: int = 0               # 4‑byte Unix epoch
     mode: int = 0                   # 1‑byte
+    discharge_current: int = 0      # 2‑byte
     recorded_at: datetime = datetime.utcnow
     battery_id: int = 0             # FK → battery.battery_id
 

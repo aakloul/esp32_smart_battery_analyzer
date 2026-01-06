@@ -30,7 +30,7 @@ from controller import TelemetryController
 EDDYSTONE_SERVICE_UUID = "0000feaa-0000-1000-8000-00805f9b34fb"
 EDDYSTONE_UUID = b"\xAA\xFE"          # 0xFEAA in little‑endian order
 TLM_FRAME_TYPE = 0x20                 # Fixed for TLM frames
-TLM_PAYLOAD_LEN = 17                  # Bytes after the UUID
+TLM_PAYLOAD_LEN = 19                  # Bytes after the UUID
 MAC_TRUNC_LEN = 4                     # Size of the truncated HMAC
 
 class EddystoneScanner:
@@ -62,25 +62,26 @@ class EddystoneScanner:
     @staticmethod
     def decode_tlm(payload: bytes) -> Dict[str, Any]:
         """
-        Decode a 14‑byte TLM payload according to the Eddystone spec.
+        Decode a 19‑byte TLM payload extending the Eddystone spec.
 
         Returns a dictionary with the fields used later in the UI.
         """
         if len(payload) != TLM_PAYLOAD_LEN:
             raise ValueError(
-                f"TLM payload length mismatch: expected 14, got {len(payload)}"
+                f"TLM payload length mismatch: expected 19, got {len(payload)}"
             )
 
         (
-            frame_type, # B - 1 byte
-            version,    # B - 1 byte
-            batt_mv,    # H - 2 bytes
-            temp_raw,   # h - 2 bytes
-            adv_cnt,    # I - 4 bytes
-            time_0_1s,  # I - 4 bytes
-            mode,       # B - 1 byte
-            capacity,   # H - 2 bytes
-        ) = struct.unpack(">BBHhIIBH", payload)     # > Big Endian
+            frame_type,         # B - 1 byte
+            version,            # B - 1 byte
+            batt_mv,            # H - 2 bytes
+            temp_raw,           # h - 2 bytes
+            adv_cnt,            # I - 4 bytes
+            time_0_1s,          # I - 4 bytes
+            mode,               # B - 1 byte
+            capacity,           # H - 2 bytes
+            discharge_current,  # H - 2 bytes
+        ) = struct.unpack(">BBHhIIBHH", payload)     # > Big Endian
 
         return {
             "frame_type": frame_type,
@@ -91,6 +92,7 @@ class EddystoneScanner:
             "adv_count": adv_cnt,
             "time_since_power_on_s": time_0_1s / 1000.0,
             "mode": mode,
+            "discharge_current": discharge_current,
         }
 
     # ------------------------------------------------------------------
