@@ -72,6 +72,7 @@ class TelemetryDB:
                 label       TEXT(256),
                 resistance  INTEGER DEFAULT 0,
                 capacity    INTEGER DEFAULT 0,
+                discharge_current  INTEGER DEFAULT 0,
                 FOREIGN KEY(device_id) REFERENCES device(device_id)
                     ON DELETE CASCADE
             );
@@ -83,6 +84,7 @@ class TelemetryDB:
                 adv_count   INTEGER NOT NULL,
                 uptime_s    INTEGER NOT NULL,
                 mode        INTEGER NOT NULL,
+                discharge_current  INTEGER DEFAULT 0,
                 battery_id  INTEGER NOT NULL,
                 recorded_at TIMESTAMP NOT NULL,
                 FOREIGN KEY(battery_id) REFERENCES battery(battery_id)
@@ -167,10 +169,10 @@ class TelemetryDB:
     def update_battery(self, bat: Battery) -> None:
         sql = """
             UPDATE battery
-            SET device_id = ?, label = ?, capacity = ?, resistance = ?
+            SET device_id = ?, label = ?, capacity = ?, resistance = ?, discharge_current = ?
             WHERE battery_id = ?;
         """
-        self.conn.execute(sql, (bat.device_id, bat.label, bat.capacity, bat.resistance, bat.battery_id))
+        self.conn.execute(sql, (bat.device_id, bat.label, bat.capacity, bat.resistance, bat.discharge_current, bat.battery_id))
         self.conn.commit()
 
     def delete_battery(self, battery_id: int) -> None:
@@ -200,8 +202,8 @@ class TelemetryDB:
         cur = self.conn.cursor()
         sql = """
             INSERT INTO telemetry
-                (voltage, resistance, capacity, adv_count, uptime_s, mode, recorded_at, battery_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                (voltage, resistance, capacity, adv_count, uptime_s, mode, discharge_current, recorded_at, battery_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         cur.execute(
             sql,
@@ -212,6 +214,7 @@ class TelemetryDB:
                 tel.adv_count,
                 tel.uptime_s,
                 tel.mode,
+                tel.discharge_current,
                 tel.recorded_at,
                 tel.battery_id,
             ),

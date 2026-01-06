@@ -81,6 +81,7 @@ class TelemetryRepository:
             adv_count=decoded["adv_count"],
             uptime_s=decoded["time_since_power_on_s"],
             mode=decoded["mode"],
+            discharge_current=decoded["discharge_current"],
             recorded_at=now,
         )
         self.db.insert_telemetry(telemetry)
@@ -90,6 +91,9 @@ class TelemetryRepository:
             self.db.update_battery(battery)
         if (telemetry.capacity > 0):
             battery.capacity = telemetry.capacity
+            self.db.update_battery(battery)
+        if (telemetry.discharge_current > 0):
+            battery.discharge_current = telemetry.discharge_current
             self.db.update_battery(battery)
 
         return telemetry

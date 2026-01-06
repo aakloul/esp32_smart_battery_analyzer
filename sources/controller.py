@@ -55,6 +55,7 @@ class TelemetryController:
             "capacity": capacity,
             "resistance": resistance,
             "voltage": decoded["battery_mv"],
+            "discharge_current": decoded["discharge_current"],
             "adv_count": decoded["adv_count"],
             "uptime_s": decoded["time_since_power_on_s"],
             "mode": SmartChargerMode(decoded["mode"]).name,
@@ -63,10 +64,11 @@ class TelemetryController:
 
         # log the record
         logger.info(
-            "from %s – V=%dmV, C=%.fmAh, adv=%d, up=%.1fs",
+            "from %s – V=%dmV, C=%.fmAh, cur=%d, adv=%d, up=%.1fs",
             device_uuid[:12],
             decoded["battery_mv"],
             decoded["capacity"] / 10.0,
+            decoded["discharge_current"] / 10.0,
             decoded["adv_count"],
             decoded["time_since_power_on_s"],
         )

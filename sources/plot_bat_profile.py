@@ -1,15 +1,21 @@
 import sqlite3
+from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.animation import FuncAnimation
 from matplotlib.ticker import FuncFormatter
 
+home_dir = Path.home()
+
 # ----------------------------------------------------------------------
 # 1️⃣  USER SETTINGS
 # ----------------------------------------------------------------------
+
+# This returns a Path object pointing at the home folder
 DB_PATH      = "./telemetry.db"
-BATTERY_ID   = 1
+DB_PATH      = Path(home_dir,"battery_profiles/master.db")
+BATTERY_ID   = 3
 INTERVAL_MS  = 2000          # refresh every 2 seconds
 MAX_POINTS   = 2000          # keep only the newest N points (optional)
 
