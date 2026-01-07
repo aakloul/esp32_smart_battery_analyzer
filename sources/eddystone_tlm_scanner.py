@@ -23,6 +23,7 @@ from bleak import BLEDevice, AdvertisementData
 
 from hex_helper import HexHelper
 from controller import TelemetryController
+from timing_decorator import timed
 
 # ----------------------------------------------------------------------
 # Constants (identical to the original script)
@@ -177,6 +178,7 @@ class EddystoneScanner:
     # ------------------------------------------------------------------
     # 3. Callback required by BleakScanner
     # ------------------------------------------------------------------
+    @timed()
     def detection_callback(self, device: BLEDevice, advertisement_data: AdvertisementData) -> None:
         """
         This method is passed directly to ``BleakScanner``.  It filters

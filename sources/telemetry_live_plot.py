@@ -155,7 +155,43 @@ class TelemetryLivePlot:
             self.discharge_current = df.loc[0]['discharge_current']
             #print(self.label, self.capacity, self.resistance, self.discharge_current)
 
+
     def _fetch_new_rows(self, last_ts):
+        """Return a DataFrame with rows newer than ``last_ts`` and the newest timestamp."""
+        sql = """
+        WITH start_uptime_s AS (
+            SELECT min(uptime_s) AS start_uptime_s 
+            FROM telemetry 
+            WHERE battery_id = ?
+                AND capacity > 0
+        )
+        SELECT
+            CAST(t.voltage    AS REAL) / 1000    AS voltage_f,
+            CAST(t.resistance AS REAL)           AS resistance_f,
+            CAST(t.capacity   AS REAL) / 10     AS capacity_f,
+            t.adv_count,
+            t.uptime_s - (SELECT start_uptime_s FROM start_uptime_s) AS uptime_s,
+            t.mode,
+            t.battery_id,
+            t.recorded_at,
+            b.label
+        FROM telemetry t
+        LEFT JOIN battery b ON b.battery_id = t.battery_id
+        WHERE b.battery_id = ?
+          AND t.voltage > 0
+          AND (? IS NULL OR t.recorded_at > ?)
+        ORDER BY t.recorded_at ASC
+        """
+        ts_str = None if last_ts is None else last_ts.isoformat(sep=' ')
+        df = pd.read_sql_query(sql, self.conn,
+                               params=(self.battery_id, self.battery_id, ts_str, ts_str))
+        if df.empty:
+            return df, last_ts
+        df["recorded_at"] = pd.to_datetime(df["recorded_at"])
+        newest_ts = df["recorded_at"].iloc[-1]
+        return df, newest_ts
+
+    def _fetch_new_rows2(self, last_ts):
         """Return a DataFrame with rows newer than ``last_ts`` and the newest timestamp."""
         sql = """
         SELECT
@@ -279,10 +315,10 @@ class TelemetryLivePlot:
 # 7️⃣  Example usage (can be placed in a separate script)
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
-    BATTERY_ID = 1
+    BATTERY_ID = 3
     home_dir = Path.home()
-    #DB_PATH=Path(home_dir,"battery_profiles/master.db")
-    DB_PATH=Path("./telemetry.db")
+    DB_PATH=Path(home_dir,"battery_profiles/master.db")
+    #DB_PATH=Path("./telemetry.db")
 
     plot1 = TelemetryLivePlot(db_path=DB_PATH,
                               battery_id=BATTERY_ID,

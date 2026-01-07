@@ -38,10 +38,22 @@ class MemoryHandler(logging.Handler):
         msg = self.format(record)
         self.buffer.append(msg)
 
+formatter = logging.Formatter(LOG_FORMAT)
+
 # Create the handler, attach it to our logger, and expose it for the UI.
 memory_handler = MemoryHandler()
-memory_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
+
+# Write to file instead of stdout
+file_handler = logging.FileHandler("eddystone.log", encoding="utf-8")
+file_handler.setLevel(logging.DEBUG)      # capture everything
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)   
 
 # Export the buffer so the view can read it without importing the whole logger.
 log_buffer = memory_handler.buffer
+
+def log_debug(msg: str, *args, **kwargs) -> None:
+    """Shortcut for `logger.debug(msg, *args, **kwargs)`."""
+    logger.debug(msg, *args, **kwargs)
