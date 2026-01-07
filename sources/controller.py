@@ -14,17 +14,19 @@ from app_logger import logger
 
 from enum import Enum
 
+
 class SmartChargerMode(Enum):
-    Charge      = 0
-    Discharge   = 1
-    Analysis    = 2
+    Charge = 0
+    Discharge = 1
+    Analysis = 2
     IResistance = 3
+
 
 class TelemetryController:
     def __init__(self, repo: TelemetryRepository, view: CursesView):
         self.repo = repo
         self.view = view
-        # controller register to be notified by view 
+        # controller register to be notified by view
         # when battery_label is changed
         self.view.on_battery_label_change = self.handle_battery_label_change
 
@@ -43,10 +45,13 @@ class TelemetryController:
         capacity = 0
         resistance = 0
         battery = self.repo.get_battery_by_device_uuid(device_uuid)
-        if (battery):
-            if (battery.label): battery_label = battery.label
-            if (battery.resistance): resistance = battery.resistance
-            if (battery.capacity): capacity = battery.capacity
+        if battery:
+            if battery.label:
+                battery_label = battery.label
+            if battery.resistance:
+                resistance = battery.resistance
+            if battery.capacity:
+                capacity = battery.capacity
 
         # Build the row the view expects
         view_row: Dict[str, Any] = {

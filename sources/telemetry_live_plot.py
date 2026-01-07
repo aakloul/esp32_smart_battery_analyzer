@@ -38,8 +38,13 @@ class TelemetryLivePlot:
         Maximum number of points to keep in memory (oldest points are discarded).
     """
 
-    def __init__(self, db_path: str, battery_id: int,
-                 interval_ms: int = 2000, max_points: int = 2000):
+    def __init__(
+        self,
+        db_path: str,
+        battery_id: int,
+        interval_ms: int = 2000,
+        max_points: int = 2000,
+    ):
         # ------------------------------------------------------------------
         # 1️⃣  Store configuration
         # ------------------------------------------------------------------
@@ -51,8 +56,7 @@ class TelemetryLivePlot:
         # ------------------------------------------------------------------
         # 2️⃣  Initialise runtime state
         # ------------------------------------------------------------------
-        self.conn = sqlite3.connect(self.db_path,
-                                    detect_types=sqlite3.PARSE_DECLTYPES)
+        self.conn = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
 
         self.data_df, self.last_timestamp = self._fetch_new_rows(None)
         self._fetch_battery_details()
@@ -78,50 +82,59 @@ class TelemetryLivePlot:
         #   x ≈ 2 % from the left border,
         #   y = 50 % vertically (center).
         self.ax_volt.text(
-            0.02, 0.5, annotation_text,
-            transform=self.ax_volt.transAxes,   # use axes‑fraction coordinates
-            ha="left", va="center",           # left‑aligned, vertically centered
+            0.02,
+            0.5,
+            annotation_text,
+            transform=self.ax_volt.transAxes,  # use axes‑fraction coordinates
+            ha="left",
+            va="center",  # left‑aligned, vertically centered
             fontsize=10,
-            color="#555555",                  # a neutral gray that doesn’t clash
-            bbox=dict(facecolor="white", edgecolor="#dddddd", pad=3)
+            color="#555555",  # a neutral gray that doesn’t clash
+            bbox=dict(facecolor="white", edgecolor="#dddddd", pad=3),
         )
 
-
         # ---- primary (voltage) axis ---------------------------------------
-        self.line_volt, = self.ax_volt.plot([], [], color="#1f77b4",
-                                            linewidth=2, label="Voltage (V)")
+        (self.line_volt,) = self.ax_volt.plot(
+            [], [], color="#1f77b4", linewidth=2, label="Voltage (V)"
+        )
         self.ax_volt.set_xlabel("Uptime (seconds)")
         self.ax_volt.set_ylabel("Voltage (V)", color="#1f77b4")
-        self.ax_volt.tick_params(axis='y', labelcolor="#1f77b4")
+        self.ax_volt.tick_params(axis="y", labelcolor="#1f77b4")
 
         # tag that will show the current maximum voltage
         self.voltage_max_tag = self.ax_volt.text(
-            0.98, 0.98, "",
+            0.98,
+            0.98,
+            "",
             transform=self.ax_volt.transAxes,
-            ha="right", va="top",
+            ha="right",
+            va="top",
             fontsize=9,
             color="#1f77b4",
             backgroundcolor="w",
-            bbox=dict(facecolor="white", edgecolor="#1f77b4", pad=1.5)
+            bbox=dict(facecolor="white", edgecolor="#1f77b4", pad=1.5),
         )
 
         # ---- secondary (capacity) axis ------------------------------------
         self.ax_cap = self.ax_volt.twinx()
-        self.line_cap, = self.ax_cap.plot([], [], color="#ff7f0e",
-                                          linewidth=2, linestyle="--",
-                                          label="Capacity (mAh)")
+        (self.line_cap,) = self.ax_cap.plot(
+            [], [], color="#ff7f0e", linewidth=2, linestyle="--", label="Capacity (mAh)"
+        )
         self.ax_cap.set_ylabel("Capacity (mAh)", color="#ff7f0e")
-        self.ax_cap.tick_params(axis='y', labelcolor="#ff7f0e")
+        self.ax_cap.tick_params(axis="y", labelcolor="#ff7f0e")
 
         # tag that will show the current maximum capacity
         self.capacity_max_tag = self.ax_cap.text(
-            0.98, 0.98, "",
+            0.98,
+            0.98,
+            "",
             transform=self.ax_cap.transAxes,
-            ha="right", va="top",
+            ha="right",
+            va="top",
             fontsize=10,
             color="#ff7f0e",
             backgroundcolor="w",
-            bbox=dict(facecolor="white", edgecolor="#ff7f0e", pad=1.5)
+            bbox=dict(facecolor="white", edgecolor="#ff7f0e", pad=1.5),
         )
 
         # combined legend
@@ -129,8 +142,9 @@ class TelemetryLivePlot:
         labels = [h.get_label() for h in handles]
         self.ax_volt.legend(handles, labels, loc="upper center")
 
-        self.fig.suptitle(f"Live Battery {self.battery_id}: "
-                          "Voltage & Capacity vs. Uptime")
+        self.fig.suptitle(
+            f"Live Battery {self.battery_id}: " "Voltage & Capacity vs. Uptime"
+        )
         self.fig.tight_layout()
 
     # ----------------------------------------------------------------------
@@ -147,14 +161,13 @@ class TelemetryLivePlot:
         FROM battery
         WHERE battery_id = 1
         """
-        df = pd.read_sql_query(sql, self.conn) #, params=(self.battery_id))
+        df = pd.read_sql_query(sql, self.conn)  # , params=(self.battery_id))
         if not df.empty:
-            self.label = df.loc[0]['label']
-            self.capacity = df.loc[0]['capacity']
-            self.resistance = df.loc[0]['resistance']
-            self.discharge_current = df.loc[0]['discharge_current']
-            #print(self.label, self.capacity, self.resistance, self.discharge_current)
-
+            self.label = df.loc[0]["label"]
+            self.capacity = df.loc[0]["capacity"]
+            self.resistance = df.loc[0]["resistance"]
+            self.discharge_current = df.loc[0]["discharge_current"]
+            # print(self.label, self.capacity, self.resistance, self.discharge_current)
 
     def _fetch_new_rows(self, last_ts):
         """Return a DataFrame with rows newer than ``last_ts`` and the newest timestamp."""
@@ -182,9 +195,10 @@ class TelemetryLivePlot:
           AND (? IS NULL OR t.recorded_at > ?)
         ORDER BY t.recorded_at ASC
         """
-        ts_str = None if last_ts is None else last_ts.isoformat(sep=' ')
-        df = pd.read_sql_query(sql, self.conn,
-                               params=(self.battery_id, self.battery_id, ts_str, ts_str))
+        ts_str = None if last_ts is None else last_ts.isoformat(sep=" ")
+        df = pd.read_sql_query(
+            sql, self.conn, params=(self.battery_id, self.battery_id, ts_str, ts_str)
+        )
         if df.empty:
             return df, last_ts
         df["recorded_at"] = pd.to_datetime(df["recorded_at"])
@@ -211,9 +225,8 @@ class TelemetryLivePlot:
           AND (? IS NULL OR t.recorded_at > ?)
         ORDER BY t.recorded_at ASC
         """
-        ts_str = None if last_ts is None else last_ts.isoformat(sep=' ')
-        df = pd.read_sql_query(sql, self.conn,
-                               params=(self.battery_id, ts_str, ts_str))
+        ts_str = None if last_ts is None else last_ts.isoformat(sep=" ")
+        df = pd.read_sql_query(sql, self.conn, params=(self.battery_id, ts_str, ts_str))
         if df.empty:
             return df, last_ts
         df["recorded_at"] = pd.to_datetime(df["recorded_at"])
@@ -223,9 +236,11 @@ class TelemetryLivePlot:
     @staticmethod
     def _capacity_formatter_factory(voltage_floor, scale_factor):
         """Factory that builds a FuncFormatter converting plotted y → real capacity."""
+
         def fmt(x, pos):
             cap = (x - voltage_floor) / scale_factor
             return f"{cap:.0f}"
+
         return FuncFormatter(fmt)
 
     # ----------------------------------------------------------------------
@@ -236,18 +251,19 @@ class TelemetryLivePlot:
         new_df, self.last_timestamp = self._fetch_new_rows(self.last_timestamp)
 
         if not new_df.empty:
-            self.data_df = pd.concat([self.data_df, new_df],
-                                     ignore_index=True)
+            self.data_df = pd.concat([self.data_df, new_df], ignore_index=True)
 
             # keep only the newest N points if the user asked for it
             if len(self.data_df) > self.max_points:
-                self.data_df = self.data_df.iloc[-self.max_points:].reset_index(drop=True)
+                self.data_df = self.data_df.iloc[-self.max_points :].reset_index(
+                    drop=True
+                )
 
         # ---- 2️⃣ recompute scaling / axis limits --------------------------
         if not self.data_df.empty:
             # a) floor = smallest voltage rounded **down** to one decimal place
             v_min_raw = self.data_df["voltage_f"].min()
-            self.voltage_floor = round(v_min_raw - 0.1, 1)   # e.g. 3.13 → 3.1
+            self.voltage_floor = round(v_min_raw - 0.1, 1)  # e.g. 3.13 → 3.1
 
             # b) top of the plot = largest voltage observed
             v_max = self.data_df["voltage_f"].max()
@@ -258,7 +274,9 @@ class TelemetryLivePlot:
             # d) scale factor that maps capacity → voltage space
             #    capacity = 0 → y = voltage_floor
             #    capacity = c_max → y = v_max
-            self.scale_factor = (v_max - self.voltage_floor) / c_max if c_max != 0 else 1.0
+            self.scale_factor = (
+                (v_max - self.voltage_floor) / c_max if c_max != 0 else 1.0
+            )
         else:
             # safe defaults for an empty dataset
             self.voltage_floor = 0.0
@@ -267,17 +285,17 @@ class TelemetryLivePlot:
             c_max = 1.0
 
         # ---- 3️⃣ update the plotted lines ---------------------------------
-        self.line_volt.set_data(self.data_df["uptime_s"],
-                                self.data_df["voltage_f"])
+        self.line_volt.set_data(self.data_df["uptime_s"], self.data_df["voltage_f"])
         self.line_cap.set_data(
             self.data_df["uptime_s"],
-            self.data_df["capacity_f"] * self.scale_factor + self.voltage_floor
+            self.data_df["capacity_f"] * self.scale_factor + self.voltage_floor,
         )
 
         # ---- 4️⃣ keep axes limits identical -------------------------------
         if not self.data_df.empty:
-            self.ax_volt.set_xlim(self.data_df["uptime_s"].min(),
-                                  self.data_df["uptime_s"].max())
+            self.ax_volt.set_xlim(
+                self.data_df["uptime_s"].min(), self.data_df["uptime_s"].max()
+            )
         self.ax_volt.set_ylim(self.voltage_floor, round(v_max, 1))
         self.ax_cap.set_ylim(self.voltage_floor, round(v_max, 1))
 
@@ -287,25 +305,25 @@ class TelemetryLivePlot:
 
         # ---- 6️⃣ refresh the right‑hand axis tick formatter ---------------
         self.ax_cap.yaxis.set_major_formatter(
-            self._capacity_formatter_factory(self.voltage_floor,
-                                             self.scale_factor)
+            self._capacity_formatter_factory(self.voltage_floor, self.scale_factor)
         )
 
         # Return the artists that changed – required by FuncAnimation
-        return (self.line_volt,
-                self.line_cap,
-                self.voltage_max_tag,
-                self.capacity_max_tag)
+        return (
+            self.line_volt,
+            self.line_cap,
+            self.voltage_max_tag,
+            self.capacity_max_tag,
+        )
 
     # ----------------------------------------------------------------------
     # 6️⃣  PUBLIC METHOD – start the animation
     # ----------------------------------------------------------------------
     def run(self):
         """Start the live plot and block until the window is closed."""
-        anim = FuncAnimation(self.fig,
-                             func=self._animate,
-                             interval=self.interval_ms,
-                             blit=False)
+        anim = FuncAnimation(
+            self.fig, func=self._animate, interval=self.interval_ms, blit=False
+        )
         plt.show()
         # When the window is closed we tidy up the DB connection
         self.conn.close()
@@ -317,13 +335,12 @@ class TelemetryLivePlot:
 if __name__ == "__main__":
     BATTERY_ID = 3
     home_dir = Path.home()
-    DB_PATH=Path(home_dir,"battery_profiles/master.db")
-    #DB_PATH=Path("./telemetry.db")
+    DB_PATH = Path(home_dir, "battery_profiles/master.db")
+    # DB_PATH=Path("./telemetry.db")
 
-    plot1 = TelemetryLivePlot(db_path=DB_PATH,
-                              battery_id=BATTERY_ID,
-                              interval_ms=2000,
-                              max_points=100000)
+    plot1 = TelemetryLivePlot(
+        db_path=DB_PATH, battery_id=BATTERY_ID, interval_ms=2000, max_points=100000
+    )
     plot1.run()
 
     # to plot a second battery in the same process:

@@ -8,8 +8,8 @@ Contains the :class:`EddystoneScanner` class that knows how to decode an
 Eddystone‑TLM frame, extract it from a BLE advertisement and expose a
 callback suitable for ``BleakScanner``.
 
-Only the scanning / decoding logic lives here.  
-After a successful tlm frame is decoded, 
+Only the scanning / decoding logic lives here.
+After a successful tlm frame is decoded,
 it delegates to decoded tlm payload to the ``TelemetryController``.
 
 Author: Adel Akloul – adapted for XIAO ESP33‑C3 chargers
@@ -29,10 +29,11 @@ from timing_decorator import timed
 # Constants (identical to the original script)
 # ----------------------------------------------------------------------
 EDDYSTONE_SERVICE_UUID = "0000feaa-0000-1000-8000-00805f9b34fb"
-EDDYSTONE_UUID = b"\xAA\xFE"          # 0xFEAA in little‑endian order
-TLM_FRAME_TYPE = 0x20                 # Fixed for TLM frames
-TLM_PAYLOAD_LEN = 19                  # Bytes after the UUID
-MAC_TRUNC_LEN = 4                     # Size of the truncated HMAC
+EDDYSTONE_UUID = b"\xaa\xfe"  # 0xFEAA in little‑endian order
+TLM_FRAME_TYPE = 0x20  # Fixed for TLM frames
+TLM_PAYLOAD_LEN = 19  # Bytes after the UUID
+MAC_TRUNC_LEN = 4  # Size of the truncated HMAC
+
 
 class EddystoneScanner:
     """
@@ -50,7 +51,12 @@ class EddystoneScanner:
         the scanner class can read it if needed.
     """
 
-    def __init__(self, helper: HexHelper, controller: TelemetryController, device_name: str = "ESP32 TLM Beacon"):
+    def __init__(
+        self,
+        helper: HexHelper,
+        controller: TelemetryController,
+        device_name: str = "ESP32 TLM Beacon",
+    ):
         self.helper = helper
         self.controller = controller
         # Keep the last decoded payload per device to avoid spamming the console.
@@ -73,16 +79,18 @@ class EddystoneScanner:
             )
 
         (
-            frame_type,         # B - 1 byte
-            version,            # B - 1 byte
-            batt_mv,            # H - 2 bytes
-            temp_raw,           # h - 2 bytes
-            adv_cnt,            # I - 4 bytes
-            time_0_1s,          # I - 4 bytes
-            mode,               # B - 1 byte
-            capacity,           # H - 2 bytes
+            frame_type,  # B - 1 byte
+            version,  # B - 1 byte
+            batt_mv,  # H - 2 bytes
+            temp_raw,  # h - 2 bytes
+            adv_cnt,  # I - 4 bytes
+            time_0_1s,  # I - 4 bytes
+            mode,  # B - 1 byte
+            capacity,  # H - 2 bytes
             discharge_current,  # H - 2 bytes
-        ) = struct.unpack(">BBHhIIBHH", payload)     # > Big Endian
+        ) = struct.unpack(
+            ">BBHhIIBHH", payload
+        )  # > Big Endian
 
         return {
             "frame_type": frame_type,
@@ -99,7 +107,9 @@ class EddystoneScanner:
     # ------------------------------------------------------------------
     # 2. Parse a single advertisement, verify its HMAC and print a summary
     # ------------------------------------------------------------------
-    def parse_advertisement(self, device_address: str, advertisement: AdvertisementData) -> None:
+    def parse_advertisement(
+        self, device_address: str, advertisement: AdvertisementData
+    ) -> None:
         """
         Look for Service Data containing the Eddystone UUID, verify the HMAC
         (if present) and, when successful, decode the TLM payload.
@@ -111,7 +121,7 @@ class EddystoneScanner:
         for uuid, data in advertisement.service_data.items():
             # The UUID comes as a 16‑bit integer in little‑endian order
             # Convert to raw bytes for easy comparison.
-            #uuid_bytes = uuid.encode('utf-8')[8:6]# to_bytes(2, byteorder="little")
+            # uuid_bytes = uuid.encode('utf-8')[8:6]# to_bytes(2, byteorder="little")
             if uuid != EDDYSTONE_SERVICE_UUID:
                 continue
 
@@ -138,7 +148,7 @@ class EddystoneScanner:
 
                 # Strip possible duplicated UUID (some implementations prepend it)
                 if len(raw) == TLM_PAYLOAD_LEN + 2 and raw[:2] == EDDYSTONE_UUID:
-                    tlm_payload = raw[2:]          # drop duplicated UUID
+                    tlm_payload = raw[2:]  # drop duplicated UUID
                 elif len(raw) == TLM_PAYLOAD_LEN:
                     tlm_payload = raw
                 else:
@@ -162,11 +172,11 @@ class EddystoneScanner:
             if previous != decoded:
                 self._last_seen[device_address] = decoded
                 ts = datetime.now().strftime("%H:%M:%S")
-                #print(f"\n[{ts}] Device {device_address}")
-                #print(f"  Battery:\t{decoded['battery_mv']} mV")
-                #print(f"  Resistance:\t{decoded['resistance']:.2f} Ω")
-                #print(f"  Adv cnt:\t{decoded['adv_count']}")
-                #print(f"  Uptime:\t{decoded['time_since_power_on_s']:.2f}s")
+                # print(f"\n[{ts}] Device {device_address}")
+                # print(f"  Battery:\t{decoded['battery_mv']} mV")
+                # print(f"  Resistance:\t{decoded['resistance']:.2f} Ω")
+                # print(f"  Adv cnt:\t{decoded['adv_count']}")
+                # print(f"  Uptime:\t{decoded['time_since_power_on_s']:.2f}s")
 
                 # ----- Persist if different then previous -----------------------------
                 # ---------- Hand over to the controller ----------
@@ -179,7 +189,9 @@ class EddystoneScanner:
     # 3. Callback required by BleakScanner
     # ------------------------------------------------------------------
     @timed()
-    def detection_callback(self, device: BLEDevice, advertisement_data: AdvertisementData) -> None:
+    def detection_callback(
+        self, device: BLEDevice, advertisement_data: AdvertisementData
+    ) -> None:
         """
         This method is passed directly to ``BleakScanner``.  It filters
         devices by name (using the name stored in the helper) and forwards
@@ -187,7 +199,7 @@ class EddystoneScanner:
         """
         try:
             if device.name == self.device_name:
-                #print(f"Device found: {device.name} - Address: {device.address}")
+                # print(f"Device found: {device.name} - Address: {device.address}")
                 # print(advertisement_data)
                 self.parse_advertisement(device.address, advertisement_data)
         except asyncio.CancelledError:

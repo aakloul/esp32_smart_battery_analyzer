@@ -28,7 +28,7 @@ class HexHelper:
     """
 
     def __init__(self, secret_key: str):
-        self.secret_key = secret_key.encode()      # bytes for HMAC
+        self.secret_key = secret_key.encode()  # bytes for HMAC
 
     # ------------------------------------------------------------------
     # Hex conversion helpers
@@ -74,5 +74,5 @@ class HexHelper:
             ``True`` if the computed truncated MAC matches the supplied one.
         """
         full_hmac = hmac.new(self.secret_key, tlm, hashlib.sha256).digest()
-        #print("truncated", self.to_hex_string(full_hmac[:trunc_len]))
+        # print("truncated", self.to_hex_string(full_hmac[:trunc_len]))
         return full_hmac[:trunc_len] == mac

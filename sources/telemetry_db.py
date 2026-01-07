@@ -7,8 +7,8 @@ Created: 2026‑01‑03
 Description:
     Low‑level DAO (Data‑Access‑Object)
     A lightweight, type‑safe wrapper around an embedded SQLite database for
-    storing battery telemetry data collected from devices. The module defines a 
-    `TelemetryDB` class that implements full CRUD operations plus convenient 
+    storing battery telemetry data collected from devices. The module defines a
+    `TelemetryDB` class that implements full CRUD operations plus convenient
     lookup and setter helpers over three dataclasses: Device, Battery, and Telemetry
 
     Key features:
@@ -17,7 +17,7 @@ Description:
         • Foreign‑key enforcement and cascade deletes
         • Helper methods such as:
             `get_device_by_mac`,
-            `get_telemetry_by_battery_id`, 
+            `get_telemetry_by_battery_id`,
             `set_mac_address_by_device_id`,
             `set_label_by_battery_id`, etc.
         • Pure‑standard‑library implementation (no external dependencies)
@@ -32,6 +32,7 @@ from pathlib import Path
 
 from models import Device, Battery, Telemetry
 
+
 # ----------------------------------------------------------------------
 # Core wrapper – only the new lookup methods are highlighted
 # ----------------------------------------------------------------------
@@ -40,10 +41,10 @@ class TelemetryDB:
 
     def __init__(self, db_path: str | Path = "telemetry.db"):
         self.conn = sqlite3.connect(
-            db_path, 
-            check_same_thread=False,           # <-- allow cross‑thread use
-            isolation_level=None,              # optional: autocommit mode
-            detect_types=sqlite3.PARSE_DECLTYPES
+            db_path,
+            check_same_thread=False,  # <-- allow cross‑thread use
+            isolation_level=None,  # optional: autocommit mode
+            detect_types=sqlite3.PARSE_DECLTYPES,
         )
 
         self.conn.row_factory = sqlite3.Row
@@ -123,7 +124,10 @@ class TelemetryDB:
             INSERT INTO device (device_id, device_uuid, mac_address, name, first_seen)
             VALUES (?, ?, ?, ?, ?);
         """
-        cur.execute(sql, (dev.device_id, dev.device_uuid, dev.mac_address, dev.name, dev.first_seen))
+        cur.execute(
+            sql,
+            (dev.device_id, dev.device_uuid, dev.mac_address, dev.name, dev.first_seen),
+        )
         self.conn.commit()
         return cur.lastrowid
 
@@ -133,7 +137,9 @@ class TelemetryDB:
             SET device_uuid = ?, mac_address = ?, name = ?
             WHERE device_id = ?;
         """
-        self.conn.execute(sql, (dev.device_uuid, dev.mac_address, dev.name, dev.device_id))
+        self.conn.execute(
+            sql, (dev.device_uuid, dev.mac_address, dev.name, dev.device_id)
+        )
         self.conn.commit()
 
     def delete_device(self, device_id: int) -> None:
@@ -172,13 +178,21 @@ class TelemetryDB:
             SET device_id = ?, label = ?, capacity = ?, resistance = ?, discharge_current = ?
             WHERE battery_id = ?;
         """
-        self.conn.execute(sql, (bat.device_id, bat.label, bat.capacity, bat.resistance, bat.discharge_current, bat.battery_id))
+        self.conn.execute(
+            sql,
+            (
+                bat.device_id,
+                bat.label,
+                bat.capacity,
+                bat.resistance,
+                bat.discharge_current,
+                bat.battery_id,
+            ),
+        )
         self.conn.commit()
 
     def delete_battery(self, battery_id: int) -> None:
-        self.conn.execute(
-            "DELETE FROM battery WHERE battery_id = ?;", (battery_id,)
-        )
+        self.conn.execute("DELETE FROM battery WHERE battery_id = ?;", (battery_id,))
         self.conn.commit()
 
     # ==============================================================
@@ -186,7 +200,9 @@ class TelemetryDB:
     # ==============================================================
 
     def list_telemetry(self) -> Iterable[Device]:
-        cur = self.conn.execute("SELECT * FROM telemetry ORDER BY battery_id, uptime_s asc;")
+        cur = self.conn.execute(
+            "SELECT * FROM telemetry ORDER BY battery_id, uptime_s asc;"
+        )
         for r in cur:
             yield self._row_to_dataclass(r, Telemetry)
 
@@ -223,11 +239,8 @@ class TelemetryDB:
         return cur.lastrowid
 
     def delete_telemetry_by_battery_id(self, battery_id: int) -> None:
-        self.conn.execute(
-            "DELETE FROM telemetry WHERE battery_id = ?;", (battery_id,)
-        )
+        self.conn.execute("DELETE FROM telemetry WHERE battery_id = ?;", (battery_id,))
         self.conn.commit()
-
 
     # ------------------------------------------------------------------
     # NEW LOOKUP METHODS
@@ -247,9 +260,7 @@ class TelemetryDB:
         Device | None
             Matching device or ``None`` if not found.
         """
-        cur = self.conn.execute(
-            "SELECT * FROM device WHERE mac_address = ?;", (mac,)
-        )
+        cur = self.conn.execute("SELECT * FROM device WHERE mac_address = ?;", (mac,))
         row = cur.fetchone()
         return self._row_to_dataclass(row, Device) if row else None
 
@@ -345,14 +356,17 @@ class TelemetryDB:
     def close(self) -> None:
         self.conn.close()
 
+
 if __name__ == "__main__":
     db = TelemetryDB()
 
-        # ----- Device ----------------------------------------------------
+    # ----- Device ----------------------------------------------------
     dev = Device(
         device_id=1,
         device_uuid=uuid.UUID("11111111-2222-3333-4444-555555555555").bytes,
-        mac_address=bytes.fromhex("AA BB CC DD EE FF".replace(":", "").replace(" ", "")),
+        mac_address=bytes.fromhex(
+            "AA BB CC DD EE FF".replace(":", "").replace(" ", "")
+        ),
     )
     try:
         db.insert_device(dev)
@@ -393,11 +407,10 @@ if __name__ == "__main__":
     for t in db.list_telemetry():
         print(t)
 
-
     # 1️⃣ Look up a device by its MAC address
-    mac = bytes.fromhex('A1B2C3D4E5F6')
+    mac = bytes.fromhex("A1B2C3D4E5F6")
     device = db.get_device_by_mac(mac)
-    print(device)                     # → Device(...) or None
+    print(device)  # → Device(...) or None
 
     # 2️⃣ Get every telemetry record for battery #3
     telemetry_rows = db.get_telemetry_by_battery_id(3)
@@ -409,14 +422,13 @@ if __name__ == "__main__":
     for b in batteries:
         print(b)
 
-    print('-' * 80)
+    print("-" * 80)
 
     db = TelemetryDB()
 
     # Change the MAC address of device #5
     rows = db.set_mac_address_by_device_id(
-        device_id=1,
-        new_mac=bytes.fromhex('DE AD BE EF 00 01')
+        device_id=1, new_mac=bytes.fromhex("DE AD BE EF 00 01")
     )
     print(f"Device MAC updated: {rows} row(s) affected")
 
@@ -424,7 +436,7 @@ if __name__ == "__main__":
     rows = db.set_label_by_battery_id(battery_id=1, new_label="Backup Pack")
     print(f"Battery label updated: {rows} row(s) affected")
 
-    print('-' * 80)
+    print("-" * 80)
 
     # Show what we stored
     print("\nDevices:")

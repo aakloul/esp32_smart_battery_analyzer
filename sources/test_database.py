@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """main.py
-Minimal executable that launches the asynchronous BLE scanner to capture 
+Minimal executable that launches the asynchronous BLE scanner to capture
 eddystone_tlm beacons. Developer must adjust ``SECRET_KEY`` (or load it from a config file)
 to match the key used on the ESP32 sketch.
 It also uses the TelemetryDB wrapper defined in telemetry_db.py.
@@ -14,6 +14,7 @@ import os
 import sqlite3
 
 from telemetry_db import TelemetryDB
+
 
 def random_mac() -> bytes:
     """Return a random 6‑byte MAC address (for demo purposes)."""
@@ -36,7 +37,7 @@ def test_database() -> None:
     # Insert a device, a battery and a telemetry record
     # --------------------------------------------------------------
     dev = Device(
-        device_uuid=uuid.uuid4().bytes,   # 16‑byte UUID
+        device_uuid=uuid.uuid4().bytes,  # 16‑byte UUID
         mac_address=random_mac(),
     )
     try:
@@ -88,7 +89,7 @@ def test_database() -> None:
     # Verify the change
     print("Device after MAC update:", db.get_device(1))
 
-    print("-"*80)
+    print("-" * 80)
 
     # Show what we stored
     print("\nDevices:")
@@ -105,6 +106,7 @@ def test_database() -> None:
 
     # Clean shutdown
     db.close()
+
 
 # ----------------------------------------------------------------------
 # 3️⃣  Main entry point
