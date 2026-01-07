@@ -6,7 +6,9 @@ home_dir = Path.home()
 # ----------------------------------------------------------------------
 # CONFIGURATION
 # ----------------------------------------------------------------------
-master_db_path = Path(home_dir, "battery_profiles/master.db")      # will be created/overwritten
+master_db_path = Path(
+    home_dir, "battery_profiles/master.db"
+)  # will be created/overwritten
 folder_with_dbs = Path(home_dir, "battery_profiles/to_archive")
 
 db_patterns = ["*.db", "*.sqlite"]
@@ -24,10 +26,12 @@ def get_table_info(conn, table):
     cur = conn.execute(f"PRAGMA table_info('{table}')")
     return cur.fetchall()
 
+
 def get_foreign_keys(conn, table):
     """Return list of (id, seq, table, from, to, on_update, on_delete, match)."""
     cur = conn.execute(f"PRAGMA foreign_key_list('{table}')")
     return cur.fetchall()
+
 
 def copy_table(master_cur, src_cur, table, pk_offset, fk_map):
     """
@@ -55,16 +59,18 @@ def copy_table(master_cur, src_cur, table, pk_offset, fk_map):
     sql = f"INSERT INTO {table} ({col_list}) SELECT {select_clause} FROM src.{table}"
     master_cur.execute(sql)
 
+
 # ----------------------------------------------------------------------
 # MAIN MERGE LOGIC
 # ----------------------------------------------------------------------
 # 1️⃣ Create (or clear) the master DB using the schema from the first source
 first_src = source_files[0]
-with sqlite3.connect(first_src) as src_conn, \
-     sqlite3.connect(master_db_path) as master_conn:
+with sqlite3.connect(first_src) as src_conn, sqlite3.connect(
+    master_db_path
+) as master_conn:
 
     # Copy the entire schema (tables, indexes, triggers, etc.)
-    src_conn.backup(master_conn)   # copies everything, we'll delete data later
+    src_conn.backup(master_conn)  # copies everything, we'll delete data later
     master_cur = master_conn.cursor()
     master_cur.execute("DELETE FROM sqlite_sequence")  # reset autoincrement counters
 
@@ -79,27 +85,33 @@ with sqlite3.connect(first_src) as src_conn, \
 for src_path in source_files:
     print(f"🔄 Merging {src_path.name}")
 
-    with sqlite3.connect(master_db_path) as master_conn, \
-         sqlite3.connect(src_path) as src_conn:
+    with sqlite3.connect(master_db_path) as master_conn, sqlite3.connect(
+        src_path
+    ) as src_conn:
 
         master_cur = master_conn.cursor()
-        src_cur    = src_conn.cursor()
+        src_cur = src_conn.cursor()
 
         # Attach source as 'src' for convenience (optional)
         master_cur.execute("ATTACH DATABASE ? AS src", (str(src_path),))
 
         # Determine PK offsets for every table
-        pk_offsets = {}   # {table: {pk_col: offset}}
-        fk_offsets = {}   # {table: {fk_col: (ref_table, ref_pk, offset)}}
+        pk_offsets = {}  # {table: {pk_col: offset}}
+        fk_offsets = {}  # {table: {fk_col: (ref_table, ref_pk, offset)}}
 
         # Gather list of tables (ignore sqlite internal tables)
-        tables = [row[0] for row in master_cur.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        )]
+        tables = [
+            row[0]
+            for row in master_cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            )
+        ]
 
         for tbl in tables:
             # Primary key detection
-            pk_info = [c for c in get_table_info(src_conn, tbl) if c[5] > 0]  # pk flag >0
+            pk_info = [
+                c for c in get_table_info(src_conn, tbl) if c[5] > 0
+            ]  # pk flag >0
             pk_offsets[tbl] = {}
             for col in pk_info:
                 pk_col = col[1]
@@ -113,18 +125,16 @@ for src_path in source_files:
             fk_info = get_foreign_keys(src_conn, tbl)
             fk_offsets[tbl] = {}
             for fk in fk_info:
-                fk_col = fk[3]          # column in this table
-                ref_tbl = fk[2]         # referenced table
-                ref_pk  = fk[4]         # column in referenced table
+                fk_col = fk[3]  # column in this table
+                ref_tbl = fk[2]  # referenced table
+                ref_pk = fk[4]  # column in referenced table
                 # Offset for the referenced PK (must already be computed)
                 offset = pk_offsets[ref_tbl][ref_pk]
                 fk_offsets[tbl][fk_col] = (ref_tbl, ref_pk, offset)
 
         # Now copy each table applying the calculated offsets
         for tbl in tables:
-            copy_table(master_cur, src_cur, tbl,
-                       pk_offsets[tbl],
-                       fk_offsets[tbl])
+            copy_table(master_cur, src_cur, tbl, pk_offsets[tbl], fk_offsets[tbl])
 
         master_conn.commit()
         master_cur.execute("DETACH src")
