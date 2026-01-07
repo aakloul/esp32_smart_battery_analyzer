@@ -179,7 +179,7 @@ classDiagram
     Controller --> CursesView : updates UI
     CursesView --> Controller : user actions
     EddystoneScanner --> Controller : callback
-    HexHelper ..> EddystoneScanner : validates HMAC
+    EddystoneScanner  ..> HexHelper : validates HMAC
 ```
 The diagram shows the main data classes (Device, Battery, Telemetry) and how the scanner, controller, repository, DB wrapper and UI interact.
 
