@@ -127,15 +127,21 @@ class _OneBatteryPlot:
             self.resistance = df.loc[0]['resistance']
             self.discharge_current = df.loc[0]['discharge_current']
 
-
     def _fetch_new_rows(self, last_ts):
+        """Return a DataFrame with rows newer than ``last_ts`` and the newest timestamp."""
         sql = """
+        WITH start_uptime_s AS (
+            SELECT min(uptime_s) AS start_uptime_s
+            FROM telemetry
+            WHERE battery_id = ?
+                AND capacity > 0
+        )
         SELECT
             CAST(t.voltage    AS REAL) / 1000    AS voltage_f,
             CAST(t.resistance AS REAL)           AS resistance_f,
             CAST(t.capacity   AS REAL) / 10     AS capacity_f,
             t.adv_count,
-            t.uptime_s,
+            t.uptime_s - (SELECT start_uptime_s FROM start_uptime_s) AS uptime_s,
             t.mode,
             t.battery_id,
             t.recorded_at,
@@ -149,12 +155,13 @@ class _OneBatteryPlot:
         """
         ts_str = None if last_ts is None else last_ts.isoformat(sep=' ')
         df = pd.read_sql_query(sql, self.conn,
-                               params=(self.battery_id, ts_str, ts_str))
+                               params=(self.battery_id, self.battery_id, ts_str, ts_str))
         if df.empty:
             return df, last_ts
         df["recorded_at"] = pd.to_datetime(df["recorded_at"])
         newest_ts = df["recorded_at"].iloc[-1]
         return df, newest_ts
+
 
     @staticmethod
     def _capacity_formatter_factory(voltage_floor, scale_factor):
@@ -325,17 +332,26 @@ class MultiBatteryLivePlot:
         """Return a DataFrame with rows newer than ``last_ts`` and the newest timestamp."""
         placeholders = ", ".join("?" for _ in self.battery_ids)
         sql = f"""
+        WITH start_uptime_s AS (
+            SELECT battery_id, min(uptime_s) AS start_uptime_s 
+            FROM telemetry 
+            WHERE battery_id  in ({placeholders})
+                AND capacity > 0
+        )
         SELECT
             min(CAST(voltage    AS REAL) / 1000)    AS min_voltage_f,
             max(CAST(voltage    AS REAL) / 1000)    AS max_voltage_f,
             max(capacity / 10),
-            min(uptime_s),
-            max(uptime_s)
-        FROM telemetry
-        WHERE battery_id in ({placeholders})
+            min(uptime_s - start_uptime_s),
+            max(uptime_s - start_uptime_s)
+        FROM telemetry t LEFT JOIN start_uptime_s s ON t.battery_id = s.battery_id 
+        WHERE t.battery_id in ({placeholders})
           AND voltage > 0
         """
-        df = pd.read_sql_query(sql, self.conn, params=(self.battery_ids))
+        ids = []
+        ids.extend(self.battery_ids)
+        ids.extend(self.battery_ids)
+        df = pd.read_sql_query(sql, self.conn, params=(ids))
         if not df.empty:
             self.v_min = df.iloc[0,0]
             self.v_max = df.iloc[0,1]
@@ -374,7 +390,7 @@ if __name__ == "__main__":
     DB_PATH = Path("telemetry.db")
     DB_PATH = Path(home_dir,"battery_profiles/master.db")
     # Example: visualise three batteries side‑by‑side
-    batteries_to_show = [1, 3, 4, 5]          # replace with the IDs you need
+    batteries_to_show = [1, 2, 3, 4, 5, 6]          # replace with the IDs you need
     live = MultiBatteryLivePlot(
         db_path=DB_PATH,
         battery_ids=batteries_to_show,
