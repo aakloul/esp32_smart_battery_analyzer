@@ -171,12 +171,15 @@ classDiagram
     }
 
     %% Relationships
-    Device "1" <-- "0..*" Telemetry : records
+    Device "1" <-- "0..*" Battery : records
+    Battery "1" <-- "0..*" Telemetry : records
     TelemetryRepository --> TelemetryDB : uses
+    TelemetryDB --> Telemetry : uses
     Controller --> TelemetryRepository : persists
-    Controller --> CursesView : updates
+    Controller --> CursesView : updates UI
+    CursesView --> Controller : user actions
     EddystoneScanner --> Controller : callback
-    HexHelper ..> Telemetry : validates HMAC
+    HexHelper ..> EddystoneScanner : validates HMAC
 ```
 The diagram shows the main data classes (Device, Battery, Telemetry) and how the scanner, controller, repository, DB wrapper and UI interact.
 
