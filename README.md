@@ -25,12 +25,12 @@ A lightweight, asyncio‑driven Python application that:
 
 | Feature	| Description |
 | -	| - |
-| BLE scanner | asynchronous, runs on any Linux host (Pi, laptop, VM).	|
-| Curses UI | pure‑ASCII, works on head‑less devices.	|
-| SQLite persistence | simple DAO layer, easy to export data.	|
-| Live plotting | Matplotlib scripts for single‑ or multi‑battery views.	|
-| Modular architecture | scanner, repository, UI, and utilities are isolated.	|
-| Extensible – add new telemetry fields or UI panels with minimum touching of the DB layer.	|
+| **BLE scanner** | asynchronous, runs on any Linux host (Pi, laptop, VM).	|
+| **Curses UI** | pure‑ASCII, works on head‑less devices.	|
+| **SQLite persistence** | simple DAO layer, easy to export data.	|
+| **Live plotting** | Matplotlib scripts for single‑ or multi‑battery views.	|
+| **Modular architecture** | scanner, repository, UI, and utilities are isolated.	|
+| **Extensible** | add new telemetry fields or UI panels with minimum touching of the DB layer.	|
 
 ### 📂 Repository layout
 
@@ -74,7 +74,7 @@ esp32_smart_battery_analyzer/
 
 ### Installation
 
-```
+```bash
 # 1️⃣ Clone the repo
 git clone https://github.com/aakloul/esp32_smart_battery_analyzer.git
 cd esp32_smart_battery_analyzer
@@ -92,7 +92,8 @@ python sources/main.py
 
 ### Plotting utilities
 
-`# Plot a set of historic profiles (master.db must exist)
+```python
+# Plot a set of historic profiles (master.db must exist)
 python sources/overlay_battery_plot.py --db ~/battery_profiles/master.db --batteries 2 3 4 5 6
 
 # Live plot of a single battery while the charger runs
